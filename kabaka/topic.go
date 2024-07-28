@@ -2,6 +2,7 @@ package kabaka
 
 import (
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -9,7 +10,11 @@ import (
 type HandleFunc func(msg *Message) error
 
 type Message struct {
-	Value []byte
+	ID   uuid.UUID
+    Value []byte
+	Retry int
+	CreateAt time.Time
+	UpdateAt time.Time
 }
 
 type Subscriber struct {
@@ -20,7 +25,7 @@ type Topic struct {
 	Subscribers map[uuid.UUID]chan *Message
 }
 
-func (t *Topic) subscribe(handler HandleFunc) chan *Message {
+func (t *Topic) subscribe(handler HandleFunc, logger Logger) chan *Message {
 	ch := make(chan *Message, 20)
 	id := uuid.New()
 
@@ -32,6 +37,13 @@ func (t *Topic) subscribe(handler HandleFunc) chan *Message {
 			case msg := <-ch:
 				err := handler(msg)
 				if err != nil {
+					logger.Error(err)
+					if msg.Retry > 0 {
+						msg.Retry--
+						msg.UpdateAt = time.Now()
+						ch <- msg
+					}
+
 					return
 				}
 			}
@@ -41,9 +53,17 @@ func (t *Topic) subscribe(handler HandleFunc) chan *Message {
 	return ch
 }
 
-func (t *Topic) publish(msg *Message) {
+func (t *Topic) publish(msg []byte) {
+	id := uuid.New()
+
 	for _, ch := range t.Subscribers {
-		ch <- msg
+		ch <- &Message{
+			ID:   id,
+			Value: msg,
+			Retry: 3,
+			CreateAt: time.Now(),
+			UpdateAt: time.Now(),
+		}
 	}
 }
 
@@ -68,10 +88,10 @@ func (t *Kabaka) Subscribe(name string, handler HandleFunc) (chan *Message, erro
 		return nil, errors.New("topic not found")
 	}
 
-	return topic.subscribe(handler), nil
+	return topic.subscribe(handler, t.logger), nil
 }
 
-func (t *Kabaka) Publish(name string, msg *Message) error {
+func (t *Kabaka) Publish(name string, msg []byte) error {
 	topic, ok := t.topics[name]
 	if !ok {
 		return errors.New("topic not found")
@@ -80,4 +100,4 @@ func (t *Kabaka) Publish(name string, msg *Message) error {
 	topic.publish(msg)
 
 	return nil
-}
+}	
