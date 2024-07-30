@@ -1,49 +1,65 @@
 package kabaka
 
 import (
+	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 )
 
-type Node struct {
-    value int
-    next  *Node
+var ErrEmptyQueue = errors.New("queue is empty")
+
+type node[T any] struct {
+	value *Message
+	next  *node[T]
 }
 
-type Queue struct {
-    head *Node
-    tail *Node
+type Queue[T any] struct {
+	sync.RWMutex
+	head *node[T]
+	tail *node[T]
+	size int32
 }
 
-func (q *Queue) Enqueue(value int) {
-    newNode := &Node{value: value}
-    if q.tail != nil {
-        q.tail.next = newNode
-    }
-    q.tail = newNode
-    if q.head == nil {
-        q.head = newNode
-    }
+func (q *Queue[T]) Enqueue(value *Message) {
+	q.Lock()
+	defer q.Unlock()
+	newNode := &node[T]{value: value}
+	if q.tail != nil {
+		q.tail.next = newNode
+	}
+	q.tail = newNode
+	if q.head == nil {
+		q.head = newNode
+	}
+	atomic.AddInt32(&q.size, 1)
 }
 
-func (q *Queue) Dequeue() (int, error) {
-    if q.head == nil {
-        return 0, fmt.Errorf("queue is empty")
-    }
-    value := q.head.value
-    q.head = q.head.next
-    if q.head == nil {
-        q.tail = nil
-    }
-    return value, nil
+func (q *Queue[T]) Dequeue() (*Message, error) {
+	q.Lock()
+	defer q.Unlock()
+	if q.head == nil {
+		return nil, fmt.Errorf("queue is empty")
+	}
+	value := q.head.value
+	q.head = q.head.next
+	if q.head == nil {
+		q.tail = nil
+	}
+
+	atomic.AddInt32(&q.size, -1)
+	return value, nil
 }
 
-func (q *Queue) Peek() (int, error) {
-    if q.head == nil {
-        return 0, fmt.Errorf("queue is empty")
-    }
-    return q.head.value, nil
+func (q *Queue[T]) Peek() (*Message, error) {
+	q.RLock()
+	defer q.RUnlock()
+	if q.head == nil {
+		return nil, fmt.Errorf("queue is empty")
+	}
+	return q.head.value, nil
 }
 
-func (q *Queue) IsEmpty() bool {
-    return q.head == nil
+func (q *Queue[T]) IsEmpty() bool {
+	return atomic.LoadInt32(&q.size) == 0
 }
