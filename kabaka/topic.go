@@ -30,6 +30,7 @@ type Topic struct {
 	Name              string
 	Subscribers       []*Subscriber
 	ActiveSubscribers []*Subscriber
+	Messages          *Queue[Message]
 }
 
 func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
@@ -67,7 +68,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	return id
 }
 
-func (t *Topic) publish(msg []byte, logger Logger) error {
+func (t *Topic) publish(message []byte, logger Logger) error {
 	t.RLock()
 	defer t.RUnlock()
 
@@ -84,15 +85,19 @@ func (t *Topic) publish(msg []byte, logger Logger) error {
 
 	selectedSubscriber := activeSubscribers[rand.Intn(len(activeSubscribers))]
 
-	logger.Info(fmt.Sprintf("publish to topic %s, subscriber: %s, message: %s", t.Name, selectedSubscriber.ID.String(), string(msg)))
+	logger.Info(fmt.Sprintf("publish to topic %s, subscriber: %s, message: %s", t.Name, selectedSubscriber.ID.String(), string(message)))
 
-	selectedSubscriber.Ch <- &Message{
+	msg := &Message{
 		ID:       uuid.New(),
-		Value:    msg,
+		Value:    message,
 		Retry:    3,
 		CreateAt: time.Now(),
 		UpdateAt: time.Now(),
 	}
+
+	t.Messages.Enqueue(msg)
+
+	selectedSubscriber.Ch <- msg
 	return nil
 }
 

@@ -10,7 +10,7 @@ import (
 var ErrEmptyQueue = errors.New("queue is empty")
 
 type node[T any] struct {
-	value *Message
+	value *T
 	next  *node[T]
 }
 
@@ -21,7 +21,7 @@ type Queue[T any] struct {
 	size int32
 }
 
-func (q *Queue[T]) Enqueue(value *Message) {
+func (q *Queue[T]) Enqueue(value *T) {
 	q.Lock()
 	defer q.Unlock()
 	newNode := &node[T]{value: value}
@@ -35,7 +35,7 @@ func (q *Queue[T]) Enqueue(value *Message) {
 	atomic.AddInt32(&q.size, 1)
 }
 
-func (q *Queue[T]) Dequeue() (*Message, error) {
+func (q *Queue[T]) Dequeue() (*T, error) {
 	q.Lock()
 	defer q.Unlock()
 	if q.head == nil {
@@ -51,7 +51,7 @@ func (q *Queue[T]) Dequeue() (*Message, error) {
 	return value, nil
 }
 
-func (q *Queue[T]) Peek() (*Message, error) {
+func (q *Queue[T]) Peek() (*T, error) {
 	q.RLock()
 	defer q.RUnlock()
 	if q.head == nil {
