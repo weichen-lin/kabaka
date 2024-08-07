@@ -28,6 +28,7 @@ func (t *Kabaka) CreateTopic(name string) error {
 	topic := &Topic{
 		Name:        name,
 		Subscribers: make([]*Subscriber, 0),
+		Messages:   NewRingBuffer(20),
 	}
 
 	t.topics[name] = topic
