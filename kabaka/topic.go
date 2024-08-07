@@ -30,7 +30,7 @@ type Topic struct {
 	Name              string
 	Subscribers       []*Subscriber
 	ActiveSubscribers []*Subscriber
-	Messages          *Queue[Message]
+	Messages          *RingBuffer
 }
 
 func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
@@ -95,7 +95,7 @@ func (t *Topic) publish(message []byte, logger Logger) error {
 		UpdateAt: time.Now(),
 	}
 
-	t.Messages.Enqueue(msg)
+	t.Messages.Push(msg)
 
 	selectedSubscriber.Ch <- msg
 	return nil
