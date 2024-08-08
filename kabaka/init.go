@@ -1,7 +1,6 @@
 package kabaka
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -21,14 +20,17 @@ func NewKabaka(config *Config) *Kabaka {
 }
 
 func (t *Kabaka) CreateTopic(name string) error {
+	t.Lock()
+	defer t.Unlock()
+
 	if _, ok := t.topics[name]; ok {
-		return errors.New("topic already exists")
+		return ErrTopicAlreadyCreated
 	}
 
 	topic := &Topic{
 		Name:        name,
 		Subscribers: make([]*Subscriber, 0),
-		Messages:   NewRingBuffer(20),
+		Messages:    NewRingBuffer(20),
 	}
 
 	t.topics[name] = topic
@@ -37,6 +39,9 @@ func (t *Kabaka) CreateTopic(name string) error {
 }
 
 func (t *Kabaka) Subscribe(name string, handler HandleFunc) (uuid.UUID, error) {
+	t.RLock()
+	defer t.RUnlock()
+
 	topic, ok := t.topics[name]
 	if !ok {
 		return uuid.Nil, ErrTopicNotFound

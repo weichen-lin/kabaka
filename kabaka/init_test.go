@@ -24,12 +24,13 @@ func Test_CreateTopic(t *testing.T) {
 	require.Equal(t, kb.topics["topic1"].Messages.size, 20)
 
 	err = kb.CreateTopic("topic1")
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTopicAlreadyCreated)
 }
 
 func Test_Subscribe(t *testing.T) {
 	kb := NewKabaka(&Config{})
-	kb.CreateTopic("topic1")
+	err := kb.CreateTopic("topic1")
+	require.NoError(t, err)
 
 	id, err := kb.Subscribe("topic1", func(msg *Message) error {
 		return nil
@@ -44,4 +45,9 @@ func Test_Subscribe(t *testing.T) {
 	require.Equal(t, kb.topics["topic1"].Subscribers[0].ID, id)
 	require.Len(t, kb.topics["topic1"].Subscribers, 1)
 	require.Len(t, kb.topics["topic1"].ActiveSubscribers, 1)
+
+	_, err = kb.Subscribe("topic_not_exist", func(msg *Message) error {
+		return nil
+	})
+	require.ErrorIs(t, err, ErrTopicNotFound)
 }
