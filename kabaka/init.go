@@ -30,7 +30,6 @@ func (t *Kabaka) CreateTopic(name string) error {
 	topic := &Topic{
 		Name:        name,
 		Subscribers: make([]*Subscriber, 0),
-		Messages:    NewRingBuffer(20),
 	}
 
 	t.topics[name] = topic
@@ -78,12 +77,30 @@ func (t *Kabaka) UnSubscribe(name string, id uuid.UUID) error {
 	return nil
 }
 
+func (t *Kabaka) CloseTopic(name string) error {
+	t.Lock()
+	defer t.Unlock()
+
+	topic, ok := t.topics[name]
+	if !ok {
+		return ErrTopicNotFound
+	}
+
+	err := topic.closeTopic()
+	if err != nil {
+		return err
+	}
+
+	delete(t.topics, name)
+	return nil
+}
+
 func (t *Kabaka) Close() error {
 	t.Lock()
 	defer t.Unlock()
 
 	for _, topic := range t.topics {
-		if err := topic.Close(); err != nil {
+		if err := topic.closeTopic(); err != nil {
 			return err
 		}
 	}
