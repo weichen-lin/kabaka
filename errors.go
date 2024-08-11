@@ -11,4 +11,5 @@ var (
 var (
 	ErrNoActiveSubscribers = errors.New("no active subscribers for topic")
 	ErrSubscriberNotFound  = errors.New("subscriber not found")
+	ErrPublishTimeout      = errors.New("publish timeout")
 )

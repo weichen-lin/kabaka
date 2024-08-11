@@ -1,7 +1,6 @@
 package kabaka
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -25,8 +24,8 @@ type Subscriber struct {
 }
 
 type ActiveSubscriber struct {
-	ID     uuid.UUID
-	Ch     chan *Message
+	ID uuid.UUID
+	Ch chan *Message
 }
 
 type Topic struct {
@@ -49,8 +48,8 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	}
 
 	activeSubscriber := &ActiveSubscriber{
-		ID:     id,
-		Ch:     ch,
+		ID: id,
+		Ch: ch,
 	}
 
 	t.Subscribers = append(t.Subscribers, subscriber)
@@ -58,19 +57,49 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 	go func() {
 		for msg := range ch {
-			logger.Info(fmt.Sprintf("receive message from topic %s, subscriber: %s, message: %s", t.Name, id.String(), string(msg.Value)))
+
+			now := time.Now()
 
 			err := handler(msg)
+
 			if err != nil {
-				logger.Error(fmt.Sprintf("error at topic %s, subscriber: %s, error: %s", t.Name, id.String(), err))
+				logger.Error(&LogMessage{
+					TopicName:     t.Name,
+					MessageID:     msg.ID,
+					Message:       string(msg.Value),
+					MessageStatus: Retry,
+					SubScriber:    id,
+					SpendTime:     time.Now().Sub(now).Milliseconds(),
+					CreatedAt:     time.Now(),
+				})
 
 				if msg.Retry > 0 {
 					msg.Retry--
 					msg.UpdateAt = time.Now()
 					ch <- msg
+				} else {
+					logger.Warn(&LogMessage{
+						TopicName:     t.Name,
+						MessageID:     msg.ID,
+						Message:       string(msg.Value),
+						MessageStatus: Error,
+						SubScriber:    id,
+						SpendTime:     time.Now().Sub(now).Milliseconds(),
+						CreatedAt:     time.Now(),
+					})
 				}
-				return
 			}
+
+			logger.Info(&LogMessage{
+				TopicName:     t.Name,
+				Action:        Consume,
+				MessageID:     msg.ID,
+				Message:       string(msg.Value),
+				MessageStatus: Success,
+				SubScriber:    id,
+				SpendTime:     time.Now().Sub(now).Milliseconds(),
+				CreatedAt:     time.Now(),
+			})
 		}
 	}()
 
@@ -82,13 +111,10 @@ func (t *Topic) publish(message []byte, logger Logger) error {
 	defer t.RUnlock()
 
 	if len(t.ActiveSubscribers) == 0 {
-		logger.Warn(fmt.Sprintf("no active subscribers for topic %s", t.Name))
 		return ErrNoActiveSubscribers
 	}
 
 	selectedSubscriber := t.ActiveSubscribers[rand.Intn(len(t.ActiveSubscribers))]
-
-	logger.Info(fmt.Sprintf("publish to topic %s, subscriber: %s, message: %s", t.Name, selectedSubscriber.ID.String(), string(message)))
 
 	msg := &Message{
 		ID:       uuid.New(),
@@ -98,13 +124,23 @@ func (t *Topic) publish(message []byte, logger Logger) error {
 		UpdateAt: time.Now(),
 	}
 
-	selectedSubscriber.Ch <- msg
-	return nil
+	select {
+	case selectedSubscriber.Ch <- msg:
+		return nil
+	case <-time.After(100 * time.Millisecond):
+		return ErrPublishTimeout
+	}
 }
 
 func (t *Topic) unsubscribe(id uuid.UUID) error {
 	t.Lock()
 	defer t.Unlock()
+
+	for _, actSub := range t.ActiveSubscribers {
+		if actSub.ID == id {
+			close(actSub.Ch)
+		}
+	}
 
 	for i, sub := range t.Subscribers {
 		if sub.ID == id {
