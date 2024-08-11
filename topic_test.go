@@ -1,13 +1,13 @@
 package kabaka
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
 
 type MockLogger struct {
 	mu   sync.Mutex
@@ -65,4 +65,34 @@ func TestLogger(t *testing.T) {
 	require.Equal(t, subID, log.SubScriber)
 	require.Equal(t, Consume, log.Action)
 	require.True(t, log.SpendTime >= 10)
+}
+
+func TestErrorLogger(t *testing.T) {
+	topic := &Topic{
+		Name: "test-topic",
+	}
+
+	handler := func(msg *Message) error {
+		return errors.New("test error")
+	}
+
+	mockLogger := &MockLogger{}
+	subID := topic.subscribe(handler, mockLogger)
+
+	err := topic.publish([]byte("******************"), mockLogger)
+	require.NoError(t, err)
+
+	time.Sleep(20 * time.Millisecond)
+
+	require.Len(t, mockLogger.logs, 4)
+
+	status := []MessageStatus{Retry, Retry, Retry, Error}
+
+	for i, log := range mockLogger.logs {
+		require.Equal(t, "test-topic", log.TopicName)
+		require.Equal(t, "******************", log.Message)
+		require.Equal(t, status[i], log.MessageStatus)
+		require.Equal(t, subID, log.SubScriber)
+		require.True(t, log.SpendTime >= 0)
+	}
 }

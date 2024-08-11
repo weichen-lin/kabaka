@@ -65,41 +65,45 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 			if err != nil {
 				logger.Error(&LogMessage{
 					TopicName:     t.Name,
+					Action: 	   Consume,
 					MessageID:     msg.ID,
 					Message:       string(msg.Value),
 					MessageStatus: Retry,
 					SubScriber:    id,
-					SpendTime:     time.Now().Sub(now).Milliseconds(),
+					SpendTime:     time.Since(now).Milliseconds(),
 					CreatedAt:     time.Now(),
 				})
 
+				msg.Retry--
+
 				if msg.Retry > 0 {
-					msg.Retry--
 					msg.UpdateAt = time.Now()
 					ch <- msg
 				} else {
 					logger.Warn(&LogMessage{
 						TopicName:     t.Name,
+						Action: 	   Consume,
 						MessageID:     msg.ID,
 						Message:       string(msg.Value),
 						MessageStatus: Error,
 						SubScriber:    id,
-						SpendTime:     time.Now().Sub(now).Milliseconds(),
+						SpendTime:     time.Since(now).Milliseconds(),
 						CreatedAt:     time.Now(),
 					})
 				}
+			} else {
+				logger.Info(&LogMessage{
+					TopicName:     t.Name,
+					Action:        Consume,
+					MessageID:     msg.ID,
+					Message:       string(msg.Value),
+					MessageStatus: Success,
+					SubScriber:    id,
+					SpendTime:     time.Since(now).Milliseconds(),
+					CreatedAt:     time.Now(),
+				})
 			}
 
-			logger.Info(&LogMessage{
-				TopicName:     t.Name,
-				Action:        Consume,
-				MessageID:     msg.ID,
-				Message:       string(msg.Value),
-				MessageStatus: Success,
-				SubScriber:    id,
-				SpendTime:     time.Now().Sub(now).Milliseconds(),
-				CreatedAt:     time.Now(),
-			})
 		}
 	}()
 
