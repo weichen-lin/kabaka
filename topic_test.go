@@ -167,8 +167,7 @@ func TestTopic_closeTopic(t *testing.T) {
 		sub.Ch <- &Message{ID: uuid.New(), Value: []byte("test")}
 	}
 
-	err := topic.closeTopic()
-	require.NoError(t, err)
+	topic.closeTopic()
 
 	for _, sub := range topic.ActiveSubscribers {
 		select {

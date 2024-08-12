@@ -86,10 +86,7 @@ func (t *Kabaka) CloseTopic(name string) error {
 		return ErrTopicNotFound
 	}
 
-	err := topic.closeTopic()
-	if err != nil {
-		return err
-	}
+	topic.closeTopic()
 
 	delete(t.topics, name)
 	return nil
@@ -100,9 +97,7 @@ func (t *Kabaka) Close() error {
 	defer t.Unlock()
 
 	for _, topic := range t.topics {
-		if err := topic.closeTopic(); err != nil {
-			return err
-		}
+		topic.closeTopic()
 	}
 	t.topics = nil
 	return nil

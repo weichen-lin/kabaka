@@ -72,6 +72,28 @@ func TestUnSubscribe(t *testing.T) {
 	require.Error(t, err, ErrTopicNotFound)
 }
 
+func TestUnSubscribeEmptySubscriber(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	id, _ := k.Subscribe("test-topic", func(msg *Message) error {
+		return nil
+	})
+
+	err = k.UnSubscribe("test-topic", id)
+	require.NoError(t, err)
+
+	topic, ok := k.topics["test-topic"]
+	require.True(t, ok)
+	require.Len(t, topic.ActiveSubscribers, 0)
+	require.Len(t, topic.Subscribers, 1)
+
+	topic.Subscribers = nil
+	err = k.UnSubscribe("test-topic", id)
+	require.Error(t, err, ErrSubscriberNotFound)
+}
+
 func TestPublish(t *testing.T) {
 	k := NewKabaka(&Config{logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
@@ -88,6 +110,32 @@ func TestPublish(t *testing.T) {
 
 	err = k.Publish("non-existent", []byte("test message"))
 	require.Error(t, err, ErrTopicNotFound)
+}
+
+func TestPublishEmptySubscriber(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	id, err := k.Subscribe("test-topic", func(msg *Message) error {
+		return nil
+	})
+	require.NotEmpty(t, id)
+	require.NoError(t, err)
+
+	err = k.Publish("test-topic", []byte("test message"))
+	require.NoError(t, err)
+
+	err = k.Publish("non-existent", []byte("test message"))
+	require.Error(t, err, ErrTopicNotFound)
+
+	topic, ok := k.topics["test-topic"]
+	require.True(t, ok)
+	require.Len(t, topic.ActiveSubscribers, 1)
+
+	topic.ActiveSubscribers = nil
+	err = k.Publish("test-topic", []byte("test message"))
+	require.Error(t, err, ErrNoActiveSubscribers)
 }
 
 func TestCloseTopic(t *testing.T) {

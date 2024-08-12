@@ -169,7 +169,7 @@ func (t *Topic) unsubscribe(id uuid.UUID) error {
 	return nil
 }
 
-func (t *Topic) closeTopic() error {
+func (t *Topic) closeTopic() {
 	t.Lock()
 	defer t.Unlock()
 
@@ -178,5 +178,4 @@ func (t *Topic) closeTopic() error {
 	}
 	t.Subscribers = nil
 	t.ActiveSubscribers = nil
-	return nil
 }
