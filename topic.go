@@ -131,7 +131,7 @@ func (t *Topic) publish(message []byte) error {
 	select {
 	case selectedSubscriber.Ch <- msg:
 		return nil
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(10 * time.Millisecond):
 		return ErrPublishTimeout
 	}
 }
@@ -140,35 +140,33 @@ func (t *Topic) unsubscribe(id uuid.UUID) error {
 	t.Lock()
 	defer t.Unlock()
 
-	for _, actSub := range t.ActiveSubscribers {
+	activeIndex := -1
+	for i, actSub := range t.ActiveSubscribers {
 		if actSub.ID == id {
 			close(actSub.Ch)
+			activeIndex = i
+			break
 		}
 	}
 
+	if activeIndex != -1 {
+		t.ActiveSubscribers = append(t.ActiveSubscribers[:activeIndex], t.ActiveSubscribers[activeIndex+1:]...)
+	}
+
+	found := false
 	for i, sub := range t.Subscribers {
 		if sub.ID == id {
 			t.Subscribers[i].Active = false
-			t.renewActiveSubscriber()
-
-			return nil
+			found = true
+			break
 		}
 	}
 
-	return ErrTopicSubScriberNotFound
-}
-
-func (t *Topic) renewActiveSubscriber() {
-	activeSubscribers := make([]*ActiveSubscriber, 0, len(t.Subscribers))
-	for _, s := range t.Subscribers {
-		if s.Active {
-			activeSubscribers = append(activeSubscribers, &ActiveSubscriber{
-				ID: s.ID,
-				Ch: make(chan *Message, 20),
-			})
-		}
+	if !found {
+		return ErrSubscriberNotFound
 	}
-	t.ActiveSubscribers = activeSubscribers
+
+	return nil
 }
 
 func (t *Topic) closeTopic() error {

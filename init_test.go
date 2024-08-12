@@ -13,7 +13,7 @@ func Test_NewKabaKa(t *testing.T) {
 
 	require.NotNil(t, kb)
 }
-func Test_CreateTopic(t *testing.T) {
+func TestCreateTopic(t *testing.T) {
 	kb := NewKabaka(&Config{})
 	err := kb.CreateTopic("topic1")
 	require.NoError(t, err)
@@ -26,8 +26,10 @@ func Test_CreateTopic(t *testing.T) {
 	require.ErrorIs(t, err, ErrTopicAlreadyCreated)
 }
 
-func Test_Subscribe(t *testing.T) {
-	kb := NewKabaka(&Config{})
+func TestSubscribe(t *testing.T) {
+	kb := NewKabaka(&Config{
+		logger: &MockLogger{},
+	})
 	err := kb.CreateTopic("topic1")
 	require.NoError(t, err)
 
@@ -51,4 +53,65 @@ func Test_Subscribe(t *testing.T) {
 		return nil
 	})
 	require.ErrorIs(t, err, ErrTopicNotFound)
+}
+
+func TestUnSubscribe(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	id, _ := k.Subscribe("test-topic", func(msg *Message) error {
+		return nil
+	})
+
+	err = k.UnSubscribe("test-topic", id)
+	require.NoError(t, err)
+
+	// Try to unsubscribe from a non-existent topic
+	err = k.UnSubscribe("non-existent", id)
+	require.Error(t, err, ErrTopicNotFound)
+}
+
+func TestPublish(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	id, err := k.Subscribe("test-topic", func(msg *Message) error {
+		return nil
+	})
+	require.NotEmpty(t, id)
+	require.NoError(t, err)
+
+	err = k.Publish("test-topic", []byte("test message"))
+	require.NoError(t, err)
+
+	err = k.Publish("non-existent", []byte("test message"))
+	require.Error(t, err, ErrTopicNotFound)
+}
+
+func TestCloseTopic(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	err = k.CloseTopic("test-topic")
+	require.NoError(t, err)
+	require.NotContains(t, k.topics, "test-topic")
+
+	err = k.CloseTopic("non-existent")
+	require.Error(t, err, ErrTopicNotFound)
+}
+
+func TestClose(t *testing.T) {
+	k := NewKabaka(&Config{logger: new(MockLogger)})
+	err := k.CreateTopic("test-topic")
+	require.NoError(t, err)
+
+	err = k.CreateTopic("test-topic-2")
+	require.NoError(t, err)
+
+	err = k.Close()
+	require.NoError(t, err)
+	require.Nil(t, k.topics)
 }

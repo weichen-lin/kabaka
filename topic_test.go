@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,6 +41,7 @@ func (m *MockLogger) Warn(msg *LogMessage) {
 
 func TestLogger(t *testing.T) {
 	mockLogger := &MockLogger{}
+
 	topic := &Topic{
 		Name: "test-topic",
 	}
@@ -68,6 +70,9 @@ func TestLogger(t *testing.T) {
 }
 
 func TestErrorLogger(t *testing.T) {
+
+	mockLogger := &MockLogger{}
+
 	topic := &Topic{
 		Name: "test-topic",
 	}
@@ -76,7 +81,6 @@ func TestErrorLogger(t *testing.T) {
 		return errors.New("test error")
 	}
 
-	mockLogger := &MockLogger{}
 	subID := topic.subscribe(handler, mockLogger)
 
 	err := topic.publish([]byte("******************"))
@@ -95,4 +99,86 @@ func TestErrorLogger(t *testing.T) {
 		require.Equal(t, subID, log.SubScriber)
 		require.True(t, log.SpendTime >= 0)
 	}
+}
+
+func TestPublishError(t *testing.T) {
+	mockLogger := &MockLogger{}
+
+	topic := &Topic{
+		Name: "test-topic",
+	}
+
+	handler := func(msg *Message) error {
+		time.Sleep(100 * time.Millisecond)
+		return nil
+	}
+
+	subId := topic.subscribe(handler, mockLogger)
+
+	err := topic.unsubscribe(subId)
+	require.NoError(t, err)
+
+	err = topic.publish([]byte("asdasdasd"))
+	require.ErrorIs(t, err, ErrNoActiveSubscribers)
+
+	topic.Subscribers = nil
+
+	err = topic.unsubscribe(subId)
+	require.ErrorIs(t, err, ErrSubscriberNotFound)
+}
+
+func TestPublishTimeout(t *testing.T) {
+	mockLogger := &MockLogger{}
+
+	topic := &Topic{
+		Name: "test-topic",
+	}
+
+	handler := func(msg *Message) error {
+		time.Sleep(1000 * time.Millisecond)
+		return nil
+	}
+
+	topic.subscribe(handler, mockLogger)
+
+	for i := 1; i <= 21; i++ {
+		err := topic.publish([]byte("******************"))
+		require.NoError(t, err)
+	}
+
+	err := topic.publish([]byte("******************"))
+	require.ErrorIs(t, err, ErrPublishTimeout)
+}
+
+func TestTopic_closeTopic(t *testing.T) {
+	topic := &Topic{
+		Name: "TestTopic",
+	}
+
+	numSubscribers := 3
+	for i := 0; i < numSubscribers; i++ {
+		topic.ActiveSubscribers = append(topic.ActiveSubscribers, &ActiveSubscriber{
+			ID: uuid.New(),
+			Ch: make(chan *Message, 1),
+		})
+	}
+
+	for _, sub := range topic.ActiveSubscribers {
+		sub.Ch <- &Message{ID: uuid.New(), Value: []byte("test")}
+	}
+
+	err := topic.closeTopic()
+	require.NoError(t, err)
+
+	for _, sub := range topic.ActiveSubscribers {
+		select {
+		case _, ok := <-sub.Ch:
+			require.Equal(t, false, ok)
+		case <-time.After(10 * time.Millisecond):
+			t.Error("Channel read timed out, it should be closed")
+		}
+	}
+
+	require.Empty(t, topic.Subscribers)
+	require.Empty(t, topic.ActiveSubscribers)
 }
