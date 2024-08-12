@@ -55,7 +55,7 @@ func (t *Kabaka) Publish(name string, msg []byte) error {
 		return ErrTopicNotFound
 	}
 
-	err := topic.publish(msg, t.logger)
+	err := topic.publish(msg)
 	if err != nil {
 		return err
 	}

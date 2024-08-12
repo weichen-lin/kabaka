@@ -51,7 +51,7 @@ func TestLogger(t *testing.T) {
 
 	subID := topic.subscribe(handler, mockLogger)
 
-	err := topic.publish([]byte("test message"), mockLogger)
+	err := topic.publish([]byte("test message"))
 	require.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -79,7 +79,7 @@ func TestErrorLogger(t *testing.T) {
 	mockLogger := &MockLogger{}
 	subID := topic.subscribe(handler, mockLogger)
 
-	err := topic.publish([]byte("******************"), mockLogger)
+	err := topic.publish([]byte("******************"))
 	require.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)

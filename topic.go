@@ -65,7 +65,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 			if err != nil {
 				logger.Error(&LogMessage{
 					TopicName:     t.Name,
-					Action: 	   Consume,
+					Action:        Consume,
 					MessageID:     msg.ID,
 					Message:       string(msg.Value),
 					MessageStatus: Retry,
@@ -82,7 +82,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 				} else {
 					logger.Warn(&LogMessage{
 						TopicName:     t.Name,
-						Action: 	   Consume,
+						Action:        Consume,
 						MessageID:     msg.ID,
 						Message:       string(msg.Value),
 						MessageStatus: Error,
@@ -110,7 +110,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	return id
 }
 
-func (t *Topic) publish(message []byte, logger Logger) error {
+func (t *Topic) publish(message []byte) error {
 	t.RLock()
 	defer t.RUnlock()
 
