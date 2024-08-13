@@ -18,21 +18,22 @@ type Message struct {
 	UpdateAt time.Time
 }
 
-type Subscriber struct {
-	ID     uuid.UUID
-	Active bool
+type subscriber struct {
+	id     uuid.UUID
+	active bool
 }
 
-type ActiveSubscriber struct {
-	ID uuid.UUID
-	Ch chan *Message
+type activeSubscriber struct {
+	id uuid.UUID
+	ch chan *Message
 }
 
 type Topic struct {
+	Name string
+
 	sync.RWMutex
-	Name              string
-	Subscribers       []*Subscriber
-	ActiveSubscribers []*ActiveSubscriber
+	subscribers       []*subscriber
+	activeSubscribers []*activeSubscriber
 }
 
 func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
@@ -42,18 +43,18 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	ch := make(chan *Message, 20)
 	id := uuid.New()
 
-	subscriber := &Subscriber{
-		ID:     id,
-		Active: true,
+	subscriber := &subscriber{
+		id:     id,
+		active: true,
 	}
 
-	activeSubscriber := &ActiveSubscriber{
-		ID: id,
-		Ch: ch,
+	activeSubscriber := &activeSubscriber{
+		id: id,
+		ch: ch,
 	}
 
-	t.Subscribers = append(t.Subscribers, subscriber)
-	t.ActiveSubscribers = append(t.ActiveSubscribers, activeSubscriber)
+	t.subscribers = append(t.subscribers, subscriber)
+	t.activeSubscribers = append(t.activeSubscribers, activeSubscriber)
 
 	go func() {
 		for msg := range ch {
@@ -114,11 +115,11 @@ func (t *Topic) publish(message []byte) error {
 	t.RLock()
 	defer t.RUnlock()
 
-	if len(t.ActiveSubscribers) == 0 {
+	if len(t.activeSubscribers) == 0 {
 		return ErrNoActiveSubscribers
 	}
 
-	selectedSubscriber := t.ActiveSubscribers[rand.Intn(len(t.ActiveSubscribers))]
+	selectedSubscriber := t.activeSubscribers[rand.Intn(len(t.activeSubscribers))]
 
 	msg := &Message{
 		ID:       uuid.New(),
@@ -129,7 +130,7 @@ func (t *Topic) publish(message []byte) error {
 	}
 
 	select {
-	case selectedSubscriber.Ch <- msg:
+	case selectedSubscriber.ch <- msg:
 		return nil
 	case <-time.After(10 * time.Millisecond):
 		return ErrPublishTimeout
@@ -141,22 +142,22 @@ func (t *Topic) unsubscribe(id uuid.UUID) error {
 	defer t.Unlock()
 
 	activeIndex := -1
-	for i, actSub := range t.ActiveSubscribers {
-		if actSub.ID == id {
-			close(actSub.Ch)
+	for i, actSub := range t.activeSubscribers {
+		if actSub.id == id {
+			close(actSub.ch)
 			activeIndex = i
 			break
 		}
 	}
 
 	if activeIndex != -1 {
-		t.ActiveSubscribers = append(t.ActiveSubscribers[:activeIndex], t.ActiveSubscribers[activeIndex+1:]...)
+		t.activeSubscribers = append(t.activeSubscribers[:activeIndex], t.activeSubscribers[activeIndex+1:]...)
 	}
 
 	found := false
-	for i, sub := range t.Subscribers {
-		if sub.ID == id {
-			t.Subscribers[i].Active = false
+	for i, sub := range t.subscribers {
+		if sub.id == id {
+			t.subscribers[i].active = false
 			found = true
 			break
 		}
@@ -173,9 +174,9 @@ func (t *Topic) closeTopic() {
 	t.Lock()
 	defer t.Unlock()
 
-	for _, sub := range t.ActiveSubscribers {
-		close(sub.Ch)
+	for _, sub := range t.activeSubscribers {
+		close(sub.ch)
 	}
-	t.Subscribers = nil
-	t.ActiveSubscribers = nil
+	t.subscribers = nil
+	t.activeSubscribers = nil
 }

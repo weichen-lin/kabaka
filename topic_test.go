@@ -121,7 +121,7 @@ func TestPublishError(t *testing.T) {
 	err = topic.publish([]byte("asdasdasd"))
 	require.ErrorIs(t, err, ErrNoActiveSubscribers)
 
-	topic.Subscribers = nil
+	topic.subscribers = nil
 
 	err = topic.unsubscribe(subId)
 	require.ErrorIs(t, err, ErrSubscriberNotFound)
@@ -157,27 +157,27 @@ func TestTopic_closeTopic(t *testing.T) {
 
 	numSubscribers := 3
 	for i := 0; i < numSubscribers; i++ {
-		topic.ActiveSubscribers = append(topic.ActiveSubscribers, &ActiveSubscriber{
-			ID: uuid.New(),
-			Ch: make(chan *Message, 1),
+		topic.activeSubscribers = append(topic.activeSubscribers, &activeSubscriber{
+			id: uuid.New(),
+			ch: make(chan *Message, 1),
 		})
 	}
 
-	for _, sub := range topic.ActiveSubscribers {
-		sub.Ch <- &Message{ID: uuid.New(), Value: []byte("test")}
+	for _, sub := range topic.activeSubscribers {
+		sub.ch <- &Message{ID: uuid.New(), Value: []byte("test")}
 	}
 
 	topic.closeTopic()
 
-	for _, sub := range topic.ActiveSubscribers {
+	for _, sub := range topic.activeSubscribers {
 		select {
-		case _, ok := <-sub.Ch:
+		case _, ok := <-sub.ch:
 			require.Equal(t, false, ok)
 		case <-time.After(10 * time.Millisecond):
 			t.Error("Channel read timed out, it should be closed")
 		}
 	}
 
-	require.Empty(t, topic.Subscribers)
-	require.Empty(t, topic.ActiveSubscribers)
+	require.Empty(t, topic.subscribers)
+	require.Empty(t, topic.activeSubscribers)
 }

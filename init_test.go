@@ -18,8 +18,8 @@ func TestCreateTopic(t *testing.T) {
 	err := kb.CreateTopic("topic1")
 	require.NoError(t, err)
 	require.Len(t, kb.topics, 1)
-	require.Len(t, kb.topics["topic1"].Subscribers, 0)
-	require.Len(t, kb.topics["topic1"].ActiveSubscribers, 0)
+	require.Len(t, kb.topics["topic1"].subscribers, 0)
+	require.Len(t, kb.topics["topic1"].activeSubscribers, 0)
 	// require.Equal(t, kb.topics["topic1"].Messages.size, 20)
 
 	err = kb.CreateTopic("topic1")
@@ -43,11 +43,11 @@ func TestSubscribe(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEqual(t, id, "")
-	require.Equal(t, kb.topics["topic1"].Subscribers[0].ID, id)
-	require.Len(t, kb.topics["topic1"].Subscribers, 1)
-	require.Equal(t, kb.topics["topic1"].Subscribers[0].Active, true)
-	require.Equal(t, kb.topics["topic1"].ActiveSubscribers[0].ID, id)
-	require.Len(t, kb.topics["topic1"].ActiveSubscribers, 1)
+	require.Equal(t, kb.topics["topic1"].subscribers[0].id, id)
+	require.Len(t, kb.topics["topic1"].subscribers, 1)
+	require.Equal(t, kb.topics["topic1"].subscribers[0].active, true)
+	require.Equal(t, kb.topics["topic1"].activeSubscribers[0].id, id)
+	require.Len(t, kb.topics["topic1"].activeSubscribers, 1)
 
 	_, err = kb.Subscribe("topic_not_exist", func(msg *Message) error {
 		return nil
@@ -86,10 +86,10 @@ func TestUnSubscribeEmptySubscriber(t *testing.T) {
 
 	topic, ok := k.topics["test-topic"]
 	require.True(t, ok)
-	require.Len(t, topic.ActiveSubscribers, 0)
-	require.Len(t, topic.Subscribers, 1)
+	require.Len(t, topic.activeSubscribers, 0)
+	require.Len(t, topic.subscribers, 1)
 
-	topic.Subscribers = nil
+	topic.subscribers = nil
 	err = k.UnSubscribe("test-topic", id)
 	require.Error(t, err, ErrSubscriberNotFound)
 }
@@ -131,9 +131,9 @@ func TestPublishEmptySubscriber(t *testing.T) {
 
 	topic, ok := k.topics["test-topic"]
 	require.True(t, ok)
-	require.Len(t, topic.ActiveSubscribers, 1)
+	require.Len(t, topic.activeSubscribers, 1)
 
-	topic.ActiveSubscribers = nil
+	topic.activeSubscribers = nil
 	err = k.Publish("test-topic", []byte("test message"))
 	require.Error(t, err, ErrNoActiveSubscribers)
 }

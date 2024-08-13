@@ -29,7 +29,7 @@ func (t *Kabaka) CreateTopic(name string) error {
 
 	topic := &Topic{
 		Name:        name,
-		Subscribers: make([]*Subscriber, 0),
+		subscribers: make([]*subscriber, 0),
 	}
 
 	t.topics[name] = topic
