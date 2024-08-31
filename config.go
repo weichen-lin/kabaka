@@ -41,7 +41,7 @@ type Logger interface {
 }
 
 type Config struct {
-	logger Logger
+	Logger Logger
 }
 
 type Options struct {

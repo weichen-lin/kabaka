@@ -15,7 +15,7 @@ type Kabaka struct {
 func NewKabaka(config *Config) *Kabaka {
 	return &Kabaka{
 		topics: make(map[string]*Topic),
-		logger: config.logger,
+		logger: config.Logger,
 	}
 }
 

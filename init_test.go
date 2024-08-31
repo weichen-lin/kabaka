@@ -28,7 +28,7 @@ func TestCreateTopic(t *testing.T) {
 
 func TestSubscribe(t *testing.T) {
 	kb := NewKabaka(&Config{
-		logger: &MockLogger{},
+		Logger: &MockLogger{},
 	})
 	err := kb.CreateTopic("topic1")
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestSubscribe(t *testing.T) {
 }
 
 func TestUnSubscribe(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
@@ -73,7 +73,7 @@ func TestUnSubscribe(t *testing.T) {
 }
 
 func TestUnSubscribeEmptySubscriber(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
@@ -95,7 +95,7 @@ func TestUnSubscribeEmptySubscriber(t *testing.T) {
 }
 
 func TestPublish(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
@@ -113,7 +113,7 @@ func TestPublish(t *testing.T) {
 }
 
 func TestPublishEmptySubscriber(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
@@ -139,7 +139,7 @@ func TestPublishEmptySubscriber(t *testing.T) {
 }
 
 func TestCloseTopic(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
@@ -152,7 +152,7 @@ func TestCloseTopic(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	k := NewKabaka(&Config{logger: new(MockLogger)})
+	k := NewKabaka(&Config{Logger: new(MockLogger)})
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 

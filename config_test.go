@@ -37,10 +37,10 @@ func TestLogMessage(t *testing.T) {
 func TestConfig(t *testing.T) {
 	mockLogger := &MockLogger{}
 	config := Config{
-		logger: mockLogger,
+		Logger: mockLogger,
 	}
 
-	require.Equal(t, mockLogger, config.logger)
+	require.Equal(t, mockLogger, config.Logger)
 }
 
 func TestOptions(t *testing.T) {
