@@ -4,18 +4,34 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Kabaka struct {
 	sync.RWMutex
-	topics map[string]*Topic
-	logger Logger
+	topics     map[string]*Topic
+	logger     Logger
+	propagator propagation.TextMapPropagator
+	tracer     trace.Tracer
 }
 
+var defaultTraceName = "kabaka"
+var version = "1.0.0"
+
 func NewKabaka(config *Config) *Kabaka {
+
+	provider := otel.GetTracerProvider()
+
 	return &Kabaka{
-		topics: make(map[string]*Topic),
-		logger: config.Logger,
+		topics:     make(map[string]*Topic),
+		logger:     config.Logger,
+		propagator: otel.GetTextMapPropagator(),
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
 	}
 }
 
@@ -30,6 +46,8 @@ func (t *Kabaka) CreateTopic(name string) error {
 	topic := &Topic{
 		Name:        name,
 		subscribers: make([]*subscriber, 0),
+		tracer:      t.tracer,
+		propagator:  t.propagator,
 	}
 
 	t.topics[name] = topic

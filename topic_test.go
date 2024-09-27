@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type MockLogger struct {
@@ -42,8 +44,15 @@ func (m *MockLogger) Warn(msg *LogMessage) {
 func TestLogger(t *testing.T) {
 	mockLogger := &MockLogger{}
 
+	provider := otel.GetTracerProvider()
+
 	topic := &Topic{
 		Name: "test-topic",
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
+		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -73,8 +82,15 @@ func TestErrorLogger(t *testing.T) {
 
 	mockLogger := &MockLogger{}
 
+	provider := otel.GetTracerProvider()
+
 	topic := &Topic{
 		Name: "test-topic",
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
+		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -104,8 +120,15 @@ func TestErrorLogger(t *testing.T) {
 func TestPublishError(t *testing.T) {
 	mockLogger := &MockLogger{}
 
+	provider := otel.GetTracerProvider()
+
 	topic := &Topic{
 		Name: "test-topic",
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
+		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -130,8 +153,15 @@ func TestPublishError(t *testing.T) {
 func TestPublishTimeout(t *testing.T) {
 	mockLogger := &MockLogger{}
 
+	provider := otel.GetTracerProvider()
+
 	topic := &Topic{
 		Name: "test-topic",
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
+		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -151,8 +181,15 @@ func TestPublishTimeout(t *testing.T) {
 }
 
 func TestTopic_closeTopic(t *testing.T) {
+	provider := otel.GetTracerProvider()
+
 	topic := &Topic{
-		Name: "TestTopic",
+		Name: "test-topic",
+		tracer: provider.Tracer(
+			defaultTraceName,
+			trace.WithInstrumentationVersion(version),
+		),
+		propagator: otel.GetTextMapPropagator(),
 	}
 
 	numSubscribers := 3

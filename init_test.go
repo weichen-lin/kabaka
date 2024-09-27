@@ -1,6 +1,7 @@
 package kabaka
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -96,11 +97,12 @@ func TestUnSubscribeEmptySubscriber(t *testing.T) {
 
 func TestPublish(t *testing.T) {
 	k := NewKabaka(&Config{Logger: new(MockLogger)})
+
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
 	id, err := k.Subscribe("test-topic", func(msg *Message) error {
-		return nil
+		return errors.New("test")
 	})
 	require.NotEmpty(t, id)
 	require.NoError(t, err)

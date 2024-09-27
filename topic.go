@@ -1,10 +1,15 @@
 package kabaka
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/rand"
 )
 
@@ -16,6 +21,29 @@ type Message struct {
 	Retry    int
 	CreateAt time.Time
 	UpdateAt time.Time
+	Headers  map[string]string
+}
+
+func (l *Message) Get(key string) string {
+	for mapkey, value := range l.Headers {
+		if key == mapkey {
+			return value
+		}
+	}
+
+	return ""
+}
+func (l *Message) Set(key string, value string) {
+	l.Headers[key] = value
+}
+func (l *Message) Keys() []string {
+	var keys []string
+
+	for key := range l.Headers {
+		keys = append(keys, l.Headers[key])
+	}
+
+	return keys
 }
 
 type subscriber struct {
@@ -34,6 +62,8 @@ type Topic struct {
 	sync.RWMutex
 	subscribers       []*subscriber
 	activeSubscribers []*activeSubscriber
+	propagator        propagation.TextMapPropagator
+	tracer            trace.Tracer
 }
 
 func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
@@ -58,6 +88,12 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 	go func() {
 		for msg := range ch {
+			fmt.Println("start handle messages")
+			fmt.Println(t.tracer)
+			parentSpanContext := t.propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
+
+			ctx, span := t.tracer.Start(parentSpanContext, "consumer start")
+			t.propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
 
 			now := time.Now()
 
@@ -80,6 +116,9 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 				if msg.Retry > 0 {
 					msg.UpdateAt = time.Now()
 					ch <- msg
+
+					span.SetStatus(codes.Error, fmt.Errorf("message retry limit count %d", msg.Retry).Error())
+					span.End()
 				} else {
 					logger.Warn(&LogMessage{
 						TopicName:     t.Name,
@@ -91,6 +130,9 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 						SpendTime:     time.Since(now).Milliseconds(),
 						CreatedAt:     time.Now(),
 					})
+
+					span.SetStatus(codes.Error, "retry to max")
+					span.End()
 				}
 			} else {
 				logger.Info(&LogMessage{
@@ -103,8 +145,10 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 					SpendTime:     time.Since(now).Milliseconds(),
 					CreatedAt:     time.Now(),
 				})
-			}
 
+				span.SetStatus(codes.Ok, "message consume success")
+				span.End()
+			}
 		}
 	}()
 
@@ -121,12 +165,18 @@ func (t *Topic) publish(message []byte) error {
 
 	selectedSubscriber := t.activeSubscribers[rand.Intn(len(t.activeSubscribers))]
 
+	headers := make(map[string]string)
+	id := uuid.New()
+
+	headers["X-Message-Id"] = id.String()
+
 	msg := &Message{
 		ID:       uuid.New(),
 		Value:    message,
 		Retry:    3,
 		CreateAt: time.Now(),
 		UpdateAt: time.Now(),
+		Headers:  headers,
 	}
 
 	select {
