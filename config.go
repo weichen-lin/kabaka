@@ -23,14 +23,15 @@ const (
 )
 
 type LogMessage struct {
-	TopicName     string        `json:"topic_name"`
-	Action        Action        `json:"action"`
-	MessageID     uuid.UUID     `json:"message_id"`
-	Message       string        `json:"message"`
-	MessageStatus MessageStatus `json:"message_status"`
-	SubScriber    uuid.UUID     `json:"subscriber"`
-	SpendTime     int64         `json:"spend_time"`
-	CreatedAt     time.Time     `json:"created_at"`
+	TopicName     string            `json:"topic_name"`
+	Action        Action            `json:"action"`
+	MessageID     uuid.UUID         `json:"message_id"`
+	Message       string            `json:"message"`
+	MessageStatus MessageStatus     `json:"message_status"`
+	SubScriber    uuid.UUID         `json:"subscriber"`
+	SpendTime     int64             `json:"spend_time"`
+	CreatedAt     time.Time         `json:"created_at"`
+	Headers       map[string]string `json:"headers"`
 }
 
 type Logger interface {

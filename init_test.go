@@ -1,7 +1,9 @@
 package kabaka
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -96,11 +98,12 @@ func TestUnSubscribeEmptySubscriber(t *testing.T) {
 
 func TestPublish(t *testing.T) {
 	k := NewKabaka(&Config{Logger: new(MockLogger)})
+
 	err := k.CreateTopic("test-topic")
 	require.NoError(t, err)
 
 	id, err := k.Subscribe("test-topic", func(msg *Message) error {
-		return nil
+		return errors.New("test")
 	})
 	require.NotEmpty(t, id)
 	require.NoError(t, err)
@@ -110,6 +113,8 @@ func TestPublish(t *testing.T) {
 
 	err = k.Publish("non-existent", []byte("test message"))
 	require.Error(t, err, ErrTopicNotFound)
+
+	time.Sleep(10 * time.Second)
 }
 
 func TestPublishEmptySubscriber(t *testing.T) {
