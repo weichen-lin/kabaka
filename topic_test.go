@@ -62,7 +62,18 @@ func TestLogger(t *testing.T) {
 
 	subID := topic.subscribe(handler, mockLogger)
 
-	err := topic.publish([]byte("test message"))
+	headers := make(map[string]string)
+
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    []byte("test message"),
+		Retry:    3,
+		CreateAt: time.Now(),
+		UpdateAt: time.Now(),
+		Headers:  headers,
+	}
+
+	err := topic.publish(msg)
 	require.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -99,7 +110,18 @@ func TestErrorLogger(t *testing.T) {
 
 	subID := topic.subscribe(handler, mockLogger)
 
-	err := topic.publish([]byte("******************"))
+	headers := make(map[string]string)
+
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    []byte("test message"),
+		Retry:    3,
+		CreateAt: time.Now(),
+		UpdateAt: time.Now(),
+		Headers:  headers,
+	}
+
+	err := topic.publish(msg)
 	require.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -141,7 +163,18 @@ func TestPublishError(t *testing.T) {
 	err := topic.unsubscribe(subId)
 	require.NoError(t, err)
 
-	err = topic.publish([]byte("asdasdasd"))
+	headers := make(map[string]string)
+
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    []byte("test message"),
+		Retry:    3,
+		CreateAt: time.Now(),
+		UpdateAt: time.Now(),
+		Headers:  headers,
+	}
+
+	err = topic.publish(msg)
 	require.ErrorIs(t, err, ErrNoActiveSubscribers)
 
 	topic.subscribers = nil
@@ -172,11 +205,33 @@ func TestPublishTimeout(t *testing.T) {
 	topic.subscribe(handler, mockLogger)
 
 	for i := 1; i <= 21; i++ {
-		err := topic.publish([]byte("******************"))
+		headers := make(map[string]string)
+
+		msg := &Message{
+			ID:       uuid.New(),
+			Value:    []byte("test message"),
+			Retry:    3,
+			CreateAt: time.Now(),
+			UpdateAt: time.Now(),
+			Headers:  headers,
+		}
+		err := topic.publish(msg)
 		require.NoError(t, err)
 	}
 
-	err := topic.publish([]byte("******************"))
+	headers := make(map[string]string)
+
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    []byte("test message"),
+		Retry:    3,
+		CreateAt: time.Now(),
+		UpdateAt: time.Now(),
+		Headers:  headers,
+	}
+	err := topic.publish(msg)
+
+	err = topic.publish(msg)
 	require.ErrorIs(t, err, ErrPublishTimeout)
 }
 

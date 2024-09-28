@@ -3,6 +3,7 @@ package kabaka
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,8 @@ func TestPublish(t *testing.T) {
 
 	err = k.Publish("non-existent", []byte("test message"))
 	require.Error(t, err, ErrTopicNotFound)
+
+	time.Sleep(10 * time.Second)
 }
 
 func TestPublishEmptySubscriber(t *testing.T) {

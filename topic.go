@@ -22,6 +22,7 @@ type Message struct {
 	CreateAt time.Time
 	UpdateAt time.Time
 	Headers  map[string]string
+	RootSpan trace.Span
 }
 
 func (l *Message) Get(key string) string {
@@ -88,11 +89,13 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 	go func() {
 		for msg := range ch {
-			fmt.Println("start handle messages")
-			fmt.Println(t.tracer)
 			parentSpanContext := t.propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
 
-			ctx, span := t.tracer.Start(parentSpanContext, "consumer start")
+			opts := []trace.SpanStartOption{
+				trace.WithSpanKind(trace.SpanKindConsumer),
+			}
+
+			ctx, span := t.tracer.Start(parentSpanContext, "consumer start", opts...)
 			t.propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
 
 			now := time.Now()
@@ -117,8 +120,9 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 					msg.UpdateAt = time.Now()
 					ch <- msg
 
-					span.SetStatus(codes.Error, fmt.Errorf("message retry limit count %d", msg.Retry).Error())
+					span.SetStatus(codes.Error, fmt.Errorf("message retry limit count %d", 3-msg.Retry).Error())
 					span.End()
+					msg.RootSpan.End()
 				} else {
 					logger.Warn(&LogMessage{
 						TopicName:     t.Name,
@@ -133,6 +137,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 					span.SetStatus(codes.Error, "retry to max")
 					span.End()
+					msg.RootSpan.End()
 				}
 			} else {
 				logger.Info(&LogMessage{
@@ -148,6 +153,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 				span.SetStatus(codes.Ok, "message consume success")
 				span.End()
+				msg.RootSpan.End()
 			}
 		}
 	}()
@@ -155,7 +161,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	return id
 }
 
-func (t *Topic) publish(message []byte) error {
+func (t *Topic) publish(msg *Message) error {
 	t.RLock()
 	defer t.RUnlock()
 
@@ -164,20 +170,6 @@ func (t *Topic) publish(message []byte) error {
 	}
 
 	selectedSubscriber := t.activeSubscribers[rand.Intn(len(t.activeSubscribers))]
-
-	headers := make(map[string]string)
-	id := uuid.New()
-
-	headers["X-Message-Id"] = id.String()
-
-	msg := &Message{
-		ID:       uuid.New(),
-		Value:    message,
-		Retry:    3,
-		CreateAt: time.Now(),
-		UpdateAt: time.Now(),
-		Headers:  headers,
-	}
 
 	select {
 	case selectedSubscriber.ch <- msg:
