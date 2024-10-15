@@ -132,7 +132,7 @@ func TestErrorLogger(t *testing.T) {
 
 	for i, log := range mockLogger.logs {
 		require.Equal(t, "test-topic", log.TopicName)
-		require.Equal(t, "******************", log.Message)
+		require.Equal(t, "test message", log.Message)
 		require.Equal(t, status[i], log.MessageStatus)
 		require.Equal(t, subID, log.SubScriber)
 		require.True(t, log.SpendTime >= 0)

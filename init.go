@@ -49,7 +49,7 @@ func (t *Kabaka) CreateTopic(name string) error {
 
 	topic := &Topic{
 		Name:        name,
-		subscribers: make([]*subscriber, 0),
+		subscribers: make(map[string]*subscriber),
 		tracer:      t.tracer,
 		propagator:  t.propagator,
 	}
@@ -93,12 +93,11 @@ func (t *Kabaka) Publish(name string, message []byte) error {
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(
 			semconv.MessagingDestinationKey.String(name),
-			semconv.MessagingDestinationKindTopic.Key.Bool(true),
 		),
 		trace.WithSpanKind(trace.SpanKindProducer),
 	}
 
-	traceName := fmt.Sprintf("%s send", name)
+	traceName := fmt.Sprintf("send message to %s", name)
 	ctx, span := t.tracer.Start(parentCtx, traceName, opts...)
 
 	t.propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
