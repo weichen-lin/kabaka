@@ -1,4 +1,4 @@
-version: '3.7'
+version: "3.7"
 
 services:
   # Tempo runs as user 10001, and docker compose creates the volume as root.
@@ -7,39 +7,29 @@ services:
     image: &tempoImage grafana/tempo:latest
     user: root
     entrypoint:
-      - 'chown'
-      - '10001:10001'
-      - '/var/tempo'
+      - "chown"
+      - "10001:10001"
+      - "/var/tempo"
     volumes:
       - ./tempo-data:/var/tempo
 
-  memcached:
-    image: memcached:1.6.29
-    container_name: memcached
-    ports:
-      - '11211:11211'
-    environment:
-      - MEMCACHED_MAX_MEMORY=64m # Set the maximum memory usage
-      - MEMCACHED_THREADS=4 # Number of threads to use
-
   tempo:
     image: *tempoImage
-    command: ['-config.file=/etc/tempo.yaml']
+    command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
     ports:
-      - '3200:3200' # tempo
-      - '4318:4318' # otlp http
+      - "3200:3200" # tempo
+      - "4318:4318" # otlp http
     depends_on:
       - init
-      - memcached
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - '3000:3000'
+      - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -53,11 +43,11 @@ services:
     container_name: otel-collector
     volumes:
       - ./otel-collector-config.yml:/etc/otel-collector-config.yml
-    command: ['--config=/etc/otel-collector-config.yml']
+    command: ["--config=/etc/otel-collector-config.yml"]
     ports:
-      - '4317:4317' # OTLP HTTP
-      - '8888:8888' # Health check
-      - '13133:13133' # Metrics
+      - "4317:4317" # OTLP GRPC
+      - "8888:8888" # Health check
+      - "13133:13133" # Metrics
     depends_on:
       - tempo
 

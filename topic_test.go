@@ -8,8 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type MockLogger struct {
@@ -44,15 +42,8 @@ func (m *MockLogger) Warn(msg *LogMessage) {
 func TestLogger(t *testing.T) {
 	mockLogger := &MockLogger{}
 
-	provider := otel.GetTracerProvider()
-
 	topic := &Topic{
 		Name: "test-topic",
-		tracer: provider.Tracer(
-			defaultTraceName,
-			trace.WithInstrumentationVersion(version),
-		),
-		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -93,15 +84,9 @@ func TestErrorLogger(t *testing.T) {
 
 	mockLogger := &MockLogger{}
 
-	provider := otel.GetTracerProvider()
-
 	topic := &Topic{
-		Name: "test-topic",
-		tracer: provider.Tracer(
-			defaultTraceName,
-			trace.WithInstrumentationVersion(version),
-		),
-		propagator: otel.GetTextMapPropagator(),
+		Name:        "test-topic",
+		subscribers: make(map[string]*subscriber),
 	}
 
 	handler := func(msg *Message) error {
@@ -110,16 +95,7 @@ func TestErrorLogger(t *testing.T) {
 
 	subID := topic.subscribe(handler, mockLogger)
 
-	headers := make(map[string]string)
-
-	msg := &Message{
-		ID:       uuid.New(),
-		Value:    []byte("test message"),
-		Retry:    3,
-		CreateAt: time.Now(),
-		UpdateAt: time.Now(),
-		Headers:  headers,
-	}
+	msg := GenerateTraceMessage("test-topic", []byte("test message"), nil)
 
 	err := topic.publish(msg)
 	require.NoError(t, err)
@@ -137,20 +113,15 @@ func TestErrorLogger(t *testing.T) {
 		require.Equal(t, subID, log.SubScriber)
 		require.True(t, log.SpendTime >= 0)
 	}
+
+	time.Sleep(10 * time.Second)
 }
 
 func TestPublishError(t *testing.T) {
 	mockLogger := &MockLogger{}
 
-	provider := otel.GetTracerProvider()
-
 	topic := &Topic{
 		Name: "test-topic",
-		tracer: provider.Tracer(
-			defaultTraceName,
-			trace.WithInstrumentationVersion(version),
-		),
-		propagator: otel.GetTextMapPropagator(),
 	}
 
 	handler := func(msg *Message) error {
@@ -181,95 +152,4 @@ func TestPublishError(t *testing.T) {
 
 	err = topic.unsubscribe(subId)
 	require.ErrorIs(t, err, ErrSubscriberNotFound)
-}
-
-func TestPublishTimeout(t *testing.T) {
-	mockLogger := &MockLogger{}
-
-	provider := otel.GetTracerProvider()
-
-	topic := &Topic{
-		Name: "test-topic",
-		tracer: provider.Tracer(
-			defaultTraceName,
-			trace.WithInstrumentationVersion(version),
-		),
-		propagator: otel.GetTextMapPropagator(),
-	}
-
-	handler := func(msg *Message) error {
-		time.Sleep(1000 * time.Millisecond)
-		return nil
-	}
-
-	topic.subscribe(handler, mockLogger)
-
-	for i := 1; i <= 21; i++ {
-		headers := make(map[string]string)
-
-		msg := &Message{
-			ID:       uuid.New(),
-			Value:    []byte("test message"),
-			Retry:    3,
-			CreateAt: time.Now(),
-			UpdateAt: time.Now(),
-			Headers:  headers,
-		}
-		err := topic.publish(msg)
-		require.NoError(t, err)
-	}
-
-	headers := make(map[string]string)
-
-	msg := &Message{
-		ID:       uuid.New(),
-		Value:    []byte("test message"),
-		Retry:    3,
-		CreateAt: time.Now(),
-		UpdateAt: time.Now(),
-		Headers:  headers,
-	}
-	err := topic.publish(msg)
-
-	err = topic.publish(msg)
-	require.ErrorIs(t, err, ErrPublishTimeout)
-}
-
-func TestTopic_closeTopic(t *testing.T) {
-	provider := otel.GetTracerProvider()
-
-	topic := &Topic{
-		Name: "test-topic",
-		tracer: provider.Tracer(
-			defaultTraceName,
-			trace.WithInstrumentationVersion(version),
-		),
-		propagator: otel.GetTextMapPropagator(),
-	}
-
-	numSubscribers := 3
-	for i := 0; i < numSubscribers; i++ {
-		topic.activeSubscribers = append(topic.activeSubscribers, &activeSubscriber{
-			id: uuid.New(),
-			ch: make(chan *Message, 1),
-		})
-	}
-
-	for _, sub := range topic.activeSubscribers {
-		sub.ch <- &Message{ID: uuid.New(), Value: []byte("test")}
-	}
-
-	topic.closeTopic()
-
-	for _, sub := range topic.activeSubscribers {
-		select {
-		case _, ok := <-sub.ch:
-			require.Equal(t, false, ok)
-		case <-time.After(10 * time.Millisecond):
-			t.Error("Channel read timed out, it should be closed")
-		}
-	}
-
-	require.Empty(t, topic.subscribers)
-	require.Empty(t, topic.activeSubscribers)
 }

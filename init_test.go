@@ -21,7 +21,6 @@ func TestCreateTopic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, kb.topics, 1)
 	require.Len(t, kb.topics["topic1"].subscribers, 0)
-	require.Len(t, kb.topics["topic1"].activeSubscribers, 0)
 	// require.Equal(t, kb.topics["topic1"].Messages.size, 20)
 
 	err = kb.CreateTopic("topic1")
@@ -45,11 +44,7 @@ func TestSubscribe(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEqual(t, id, "")
-	require.Equal(t, kb.topics["topic1"].subscribers[0].id, id)
 	require.Len(t, kb.topics["topic1"].subscribers, 1)
-	require.Equal(t, kb.topics["topic1"].subscribers[0].active, true)
-	require.Equal(t, kb.topics["topic1"].activeSubscribers[0].id, id)
-	require.Len(t, kb.topics["topic1"].activeSubscribers, 1)
 
 	_, err = kb.Subscribe("topic_not_exist", func(msg *Message) error {
 		return nil
@@ -88,7 +83,6 @@ func TestUnSubscribeEmptySubscriber(t *testing.T) {
 
 	topic, ok := k.topics["test-topic"]
 	require.True(t, ok)
-	require.Len(t, topic.activeSubscribers, 0)
 	require.Len(t, topic.subscribers, 1)
 
 	topic.subscribers = nil
@@ -108,10 +102,10 @@ func TestPublish(t *testing.T) {
 	require.NotEmpty(t, id)
 	require.NoError(t, err)
 
-	err = k.Publish("test-topic", []byte("test message"))
+	err = k.Publish("test-topic", []byte("test message"), nil)
 	require.NoError(t, err)
 
-	err = k.Publish("non-existent", []byte("test message"))
+	err = k.Publish("non-existent", []byte("test message"), nil)
 	require.Error(t, err, ErrTopicNotFound)
 
 	time.Sleep(10 * time.Second)
@@ -128,18 +122,16 @@ func TestPublishEmptySubscriber(t *testing.T) {
 	require.NotEmpty(t, id)
 	require.NoError(t, err)
 
-	err = k.Publish("test-topic", []byte("test message"))
+	err = k.Publish("test-topic", []byte("test message"), nil)
 	require.NoError(t, err)
 
-	err = k.Publish("non-existent", []byte("test message"))
+	err = k.Publish("non-existent", []byte("test message"), nil)
 	require.Error(t, err, ErrTopicNotFound)
 
-	topic, ok := k.topics["test-topic"]
+	_, ok := k.topics["test-topic"]
 	require.True(t, ok)
-	require.Len(t, topic.activeSubscribers, 1)
 
-	topic.activeSubscribers = nil
-	err = k.Publish("test-topic", []byte("test message"))
+	err = k.Publish("test-topic", []byte("test message"), nil)
 	require.Error(t, err, ErrNoActiveSubscribers)
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -26,8 +27,6 @@ type Topic struct {
 
 	sync.RWMutex
 	subscribers map[string]*subscriber
-	propagator  propagation.TextMapPropagator
-	tracer      trace.Tracer
 }
 
 func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
@@ -44,9 +43,17 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 	t.subscribers[id.String()] = subscriber
 
+	propagator := otel.GetTextMapPropagator()
+	provider := otel.GetTracerProvider()
+
+	tracer := provider.Tracer(
+		defaultTraceName,
+		trace.WithInstrumentationVersion(version),
+	)
+
 	go func() {
 		for msg := range ch {
-			parentSpanContext := t.propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
+			parentSpanContext := propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
 
 			opts := []trace.SpanStartOption{
 				trace.WithAttributes(
@@ -55,8 +62,8 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 				trace.WithSpanKind(trace.SpanKindConsumer),
 			}
 
-			ctx, span := t.tracer.Start(parentSpanContext, fmt.Sprintf("consume message %s", msg.ID.String()), opts...)
-			t.propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
+			ctx, span := tracer.Start(parentSpanContext, fmt.Sprintf("consume message %s", msg.ID.String()), opts...)
+			propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
 
 			now := time.Now()
 
@@ -82,9 +89,7 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 
 					span.SetStatus(codes.Error, fmt.Errorf("message retry limit count %d", 3-msg.Retry).Error())
 					span.End()
-					if msg.RootSpan != nil {
-						msg.RootSpan.End()
-					}
+
 				} else {
 					logger.Warn(&LogMessage{
 						TopicName:     t.Name,
@@ -149,8 +154,6 @@ func (t *Topic) publish(msg *Message) error {
 	select {
 	case selectedSubscriber.ch <- msg:
 		return nil
-	case <-time.After(10 * time.Millisecond):
-		return ErrPublishTimeout
 	default:
 		return ErrPublishTimeout
 	}
@@ -178,4 +181,16 @@ func (t *Topic) closeTopic() {
 		close(sub.ch)
 	}
 	t.subscribers = nil
+}
+
+// func (t *Topic) injectCtx(msg *Message) {
+// 	propagator := otel.GetTextMapPropagator()
+// 	propagator.Inject(context.Background(), propagation.MapCarrier(msg.Headers))
+// }
+
+func NewTopic(name string) *Topic {
+	return &Topic{
+		Name:        name,
+		subscribers: make(map[string]*subscriber),
+	}
 }

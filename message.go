@@ -1,9 +1,14 @@
 package kabaka
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -17,8 +22,8 @@ type Message struct {
 	RootSpan trace.Span
 }
 
-func (l *Message) Get(key string) string {
-	for mapkey, value := range l.Headers {
+func (m *Message) Get(key string) string {
+	for mapkey, value := range m.Headers {
 		if key == mapkey {
 			return value
 		}
@@ -26,16 +31,66 @@ func (l *Message) Get(key string) string {
 
 	return ""
 }
-func (l *Message) Set(key string, value string) {
-	l.Headers[key] = value
+
+func (m *Message) Set(key string, value string) {
+	m.Headers[key] = value
 }
 
-func (l *Message) Keys() []string {
+func (m *Message) Keys() []string {
 	var keys []string
 
-	for key := range l.Headers {
-		keys = append(keys, l.Headers[key])
+	for key := range m.Headers {
+		keys = append(keys, m.Headers[key])
 	}
 
 	return keys
+}
+
+func (m *Message) initTrace(
+	topic_name string, contextProvider propagation.TextMapCarrier,
+) {
+	propagator := otel.GetTextMapPropagator()
+	provider := otel.GetTracerProvider()
+
+	tracer := provider.Tracer(
+		defaultTraceName,
+		trace.WithInstrumentationVersion(version),
+	)
+
+	if contextProvider == nil {
+		contextProvider = propagation.MapCarrier(m.Headers)
+	}
+
+	parentCtx := propagator.Extract(context.Background(), contextProvider)
+
+	opts := []trace.SpanStartOption{
+		trace.WithAttributes(
+			semconv.MessagingDestinationKey.String(topic_name),
+		),
+		trace.WithSpanKind(trace.SpanKindProducer),
+	}
+
+	traceName := fmt.Sprintf("send message to %s", topic_name)
+	ctx, span := tracer.Start(parentCtx, traceName, opts...)
+
+	propagator.Inject(ctx, m)
+
+	m.RootSpan = span
+}
+
+func GenerateTraceMessage(topic_name string, message []byte, propagation propagation.TextMapCarrier) *Message {
+	headers := make(map[string]string)
+	fmt.Println("GenerateTraceMessage")
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    message,
+		Retry:    3,
+		CreateAt: time.Now(),
+		UpdateAt: time.Now(),
+		Headers:  headers,
+	}
+
+	msg.initTrace(topic_name, propagation)
+	fmt.Println("GenerateTraceMessage end")
+	return msg
 }
