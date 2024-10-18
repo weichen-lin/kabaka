@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type Kabaka struct {
@@ -12,7 +13,14 @@ type Kabaka struct {
 	logger Logger
 }
 
+var defaultTraceName = "kabaka"
+var version = "1.0.0"
+
 func NewKabaka(config *Config) *Kabaka {
+	if config.Logger == nil {
+		config.Logger = nil
+	}
+
 	return &Kabaka{
 		topics: make(map[string]*Topic),
 		logger: config.Logger,
@@ -29,7 +37,7 @@ func (t *Kabaka) CreateTopic(name string) error {
 
 	topic := &Topic{
 		Name:        name,
-		subscribers: make([]*subscriber, 0),
+		subscribers: make(map[string]*subscriber),
 	}
 
 	t.topics[name] = topic
@@ -49,11 +57,13 @@ func (t *Kabaka) Subscribe(name string, handler HandleFunc) (uuid.UUID, error) {
 	return topic.subscribe(handler, t.logger), nil
 }
 
-func (t *Kabaka) Publish(name string, msg []byte) error {
+func (t *Kabaka) Publish(name string, message []byte, propagation propagation.TextMapCarrier) error {
 	topic, ok := t.topics[name]
 	if !ok {
 		return ErrTopicNotFound
 	}
+
+	msg := GenerateTraceMessage(topic.Name, message, propagation)
 
 	err := topic.publish(msg)
 	if err != nil {
