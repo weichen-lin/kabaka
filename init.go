@@ -10,7 +10,7 @@ import (
 type Kabaka struct {
 	sync.RWMutex
 	topics map[string]*Topic
-	logger Logger
+	config *Config
 }
 
 var defaultTraceName = "kabaka"
@@ -19,11 +19,13 @@ var version = "1.0.0"
 func NewKabaka(config *Config) *Kabaka {
 	if config.Logger == nil {
 		config.Logger = nil
+	} else {
+		setKabakaLogger(config.Logger)
 	}
 
 	return &Kabaka{
 		topics: make(map[string]*Topic),
-		logger: config.Logger,
+		config: config,
 	}
 }
 
@@ -54,7 +56,7 @@ func (t *Kabaka) Subscribe(name string, handler HandleFunc) (uuid.UUID, error) {
 		return uuid.Nil, ErrTopicNotFound
 	}
 
-	return topic.subscribe(handler, t.logger), nil
+	return topic.subscribe(handler), nil
 }
 
 func (t *Kabaka) Publish(name string, message []byte, propagation propagation.TextMapCarrier) error {
@@ -64,6 +66,8 @@ func (t *Kabaka) Publish(name string, message []byte, propagation propagation.Te
 	}
 
 	msg := GenerateTraceMessage(topic.Name, message, propagation)
+
+	topic.injectCtx(msg)
 
 	err := topic.publish(msg)
 	if err != nil {

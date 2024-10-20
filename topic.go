@@ -20,16 +20,20 @@ type HandleFunc func(msg *Message) error
 type subscriber struct {
 	active bool
 	ch     chan *Message
+	done   chan struct{}
 }
 
 type Topic struct {
 	Name string
 
 	sync.RWMutex
-	subscribers map[string]*subscriber
+	subscribers       map[string]*subscriber
+	activeSubscribers []uuid.UUID
+	retryDelay        time.Duration
+	processTimeout    time.Duration
 }
 
-func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
+func (t *Topic) subscribe(handler HandleFunc) uuid.UUID {
 	t.Lock()
 	defer t.Unlock()
 
@@ -39,93 +43,40 @@ func (t *Topic) subscribe(handler HandleFunc, logger Logger) uuid.UUID {
 	subscriber := &subscriber{
 		active: true,
 		ch:     ch,
+		done:   make(chan struct{}),
 	}
 
 	t.subscribers[id.String()] = subscriber
-
-	propagator := otel.GetTextMapPropagator()
-	provider := otel.GetTracerProvider()
-
-	tracer := provider.Tracer(
-		defaultTraceName,
-		trace.WithInstrumentationVersion(version),
-	)
+	t.activeSubscribers = append(t.activeSubscribers, id)
 
 	go func() {
+		defer close(subscriber.done)
+
 		for msg := range ch {
-			parentSpanContext := propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
-
-			opts := []trace.SpanStartOption{
-				trace.WithAttributes(
-					semconv.MessagingMessageIDKey.String(msg.ID.String()),
-				),
-				trace.WithSpanKind(trace.SpanKindConsumer),
-			}
-
-			ctx, span := tracer.Start(parentSpanContext, fmt.Sprintf("consume message %s", msg.ID.String()), opts...)
-			propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
-
 			now := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), t.processTimeout)
+			
+			span := t.injectCtx(msg)
 
-			err := handler(msg)
+			result := make(chan error, 1)
+			go func() {
+				result <- handler(msg)
+			}()
 
-			if err != nil {
-				logger.Error(&LogMessage{
-					TopicName:     t.Name,
-					Action:        Consume,
-					MessageID:     msg.ID,
-					Message:       string(msg.Value),
-					MessageStatus: Retry,
-					SubScriber:    id,
-					SpendTime:     time.Since(now).Milliseconds(),
-					CreatedAt:     time.Now(),
-				})
+			select {
+			case err := <-result:
+				duration := time.Since(now)
 
-				msg.Retry--
-
-				if msg.Retry > 0 {
-					msg.UpdateAt = time.Now()
-					ch <- msg
-
-					span.SetStatus(codes.Error, fmt.Errorf("message retry limit count %d", 3-msg.Retry).Error())
-					span.End()
-
+				if err != nil {
+					t.handleError(msg, err, id, span, duration)
 				} else {
-					logger.Warn(&LogMessage{
-						TopicName:     t.Name,
-						Action:        Consume,
-						MessageID:     msg.ID,
-						Message:       string(msg.Value),
-						MessageStatus: Error,
-						SubScriber:    id,
-						SpendTime:     time.Since(now).Milliseconds(),
-						CreatedAt:     time.Now(),
-					})
-
-					span.SetStatus(codes.Error, "retry to max")
-					span.End()
-					if msg.RootSpan != nil {
-						msg.RootSpan.End()
-					}
+					t.handleSuccess(msg, id, span, duration)
 				}
-			} else {
-				logger.Info(&LogMessage{
-					TopicName:     t.Name,
-					Action:        Consume,
-					MessageID:     msg.ID,
-					Message:       string(msg.Value),
-					MessageStatus: Success,
-					SubScriber:    id,
-					SpendTime:     time.Since(now).Milliseconds(),
-					CreatedAt:     time.Now(),
-				})
-
-				span.SetStatus(codes.Ok, "message consume success")
-				span.End()
-				if msg.RootSpan != nil {
-					msg.RootSpan.End()
-				}
+			case <-ctx.Done():
+				t.handleError(msg, ctx.Err(), id, span, time.Since(now))
 			}
+
+			cancel()
 		}
 	}()
 
@@ -136,20 +87,9 @@ func (t *Topic) publish(msg *Message) error {
 	t.RLock()
 	defer t.RUnlock()
 
-	activeSubscribers := make([]string, 0, len(t.subscribers))
-	for id, sub := range t.subscribers {
-		if sub.active {
-			activeSubscribers = append(activeSubscribers, id)
-		}
-	}
-
-	if len(activeSubscribers) == 0 {
-		return ErrNoActiveSubscribers
-	}
-
-	randomIndex := rand.Intn(len(activeSubscribers))
-	selectedID := activeSubscribers[randomIndex]
-	selectedSubscriber := t.subscribers[selectedID]
+	randomIndex := rand.Intn(len(t.activeSubscribers))
+	selectedID := t.activeSubscribers[randomIndex]
+	selectedSubscriber := t.subscribers[selectedID.String()]
 
 	select {
 	case selectedSubscriber.ch <- msg:
@@ -157,6 +97,66 @@ func (t *Topic) publish(msg *Message) error {
 	default:
 		return ErrPublishTimeout
 	}
+}
+
+func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Span, duration time.Duration) error {
+	logger := getKabakaLogger()
+
+	msg.Retry--
+
+	if msg.Retry > 0 {
+		time.Sleep(t.retryDelay)
+
+		logger.Error(&LogMessage{
+			TopicName:     t.Name,
+			Action:        Consume,
+			MessageID:     msg.ID,
+			Message:       string(msg.Value),
+			MessageStatus: Retry,
+			SubScriber:    id,
+			SpendTime:     duration.Milliseconds(),
+			CreatedAt:     time.Now(),
+		})
+
+		select {
+		case t.subscribers[id.String()].ch <- msg:
+			span.SetStatus(codes.Error, fmt.Sprintf("retry attempt %d", 3-msg.Retry))
+		default:
+			return fmt.Errorf("channel full, cannot retry message")
+		}
+	} else {
+		logger.Error(&LogMessage{
+			TopicName:     t.Name,
+			Action:        Consume,
+			MessageID:     msg.ID,
+			Message:       string(msg.Value),
+			MessageStatus: Error,
+			SubScriber:    id,
+			SpendTime:     duration.Milliseconds(),
+			CreatedAt:     time.Now(),
+		})
+		span.SetStatus(codes.Error, "max retries exceeded")
+	}
+
+	return err
+}
+
+func (t *Topic) handleSuccess(msg *Message, id uuid.UUID, span trace.Span, duration time.Duration) error {
+	defer span.End()
+	logger := getKabakaLogger()
+
+	logger.Info(&LogMessage{
+		TopicName:     t.Name,
+		Action:        Consume,
+		MessageID:     msg.ID,
+		Message:       string(msg.Value),
+		MessageStatus: Success,
+		SubScriber:    id,
+		SpendTime:     duration.Milliseconds(),
+		CreatedAt:     time.Now(),
+	})
+
+	return nil
 }
 
 func (t *Topic) unsubscribe(id uuid.UUID) error {
@@ -168,8 +168,26 @@ func (t *Topic) unsubscribe(id uuid.UUID) error {
 		return ErrSubscriberNotFound
 	}
 
+	found := false
+	for i, activeID := range t.activeSubscribers {
+		if activeID == id {
+			t.activeSubscribers = append(t.activeSubscribers[:i], t.activeSubscribers[i+1:]...)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return ErrSubscriberNotFound
+	}
+
 	sub.active = false
 	close(sub.ch)
+
+	<-sub.done
+
+	delete(t.subscribers, id.String())
+
 	return nil
 }
 
@@ -183,14 +201,36 @@ func (t *Topic) closeTopic() {
 	t.subscribers = nil
 }
 
-// func (t *Topic) injectCtx(msg *Message) {
-// 	propagator := otel.GetTextMapPropagator()
-// 	propagator.Inject(context.Background(), propagation.MapCarrier(msg.Headers))
-// }
+func (t *Topic) injectCtx(msg *Message) trace.Span {
+	propagator := otel.GetTextMapPropagator()
+	provider := otel.GetTracerProvider()
 
-func NewTopic(name string) *Topic {
+	tracer := provider.Tracer(
+		defaultTraceName,
+		trace.WithInstrumentationVersion(version),
+	)
+
+	parentCtx := propagator.Extract(context.Background(), propagation.MapCarrier(msg.Headers))
+
+	opts := []trace.SpanStartOption{
+		trace.WithAttributes(
+			semconv.MessagingMessageIDKey.String(msg.ID.String()),
+		),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+	}
+
+	ctx, span := tracer.Start(parentCtx, fmt.Sprintf("consume message %s", msg.ID.String()), opts...)
+	propagator.Inject(ctx, propagation.MapCarrier(msg.Headers))
+
+	return span
+}
+
+func NewTopic(name string, retryDelay time.Duration, processtimeOut time.Duration) *Topic {
 	return &Topic{
-		Name:        name,
-		subscribers: make(map[string]*subscriber),
+		Name:              name,
+		subscribers:       make(map[string]*subscriber),
+		activeSubscribers: make([]uuid.UUID, 0),
+		retryDelay:        retryDelay,
+		processTimeout:    processtimeOut,
 	}
 }

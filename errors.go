@@ -13,3 +13,7 @@ var (
 	ErrSubscriberNotFound  = errors.New("subscriber not found")
 	ErrPublishTimeout      = errors.New("publish timeout")
 )
+
+var (
+	ErrSubscriberClosed = errors.New("subscriber is not active")
+)

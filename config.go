@@ -12,6 +12,7 @@ const (
 	Subscribe Action = "subscribe"
 	Publish   Action = "publish"
 	Consume   Action = "consume"
+	Cancelled Action = "cancelled"
 )
 
 type MessageStatus string
@@ -43,16 +44,22 @@ type Logger interface {
 
 type Config struct {
 	Logger Logger
+	TimeOut time.Duration
+	RetryDelay time.Duration
 }
 
 type Options struct {
 	Name       string
 	BufferSize int
+	DefaultTimeout time.Duration
+	DefaultRetryDelay time.Duration
 }
 
 func NewOptions(name string) *Options {
 	return &Options{
 		Name:       name,
 		BufferSize: 24,
+		DefaultTimeout: 5 * time.Second,
+		DefaultRetryDelay: 5 * time.Second,
 	}
 }

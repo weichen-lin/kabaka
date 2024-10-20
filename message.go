@@ -17,7 +17,6 @@ type Message struct {
 	Value    []byte
 	Retry    int
 	CreateAt time.Time
-	UpdateAt time.Time
 	Headers  map[string]string
 	RootSpan trace.Span
 }
@@ -47,7 +46,7 @@ func (m *Message) Keys() []string {
 }
 
 func (m *Message) initTrace(
-	topic_name string, contextProvider propagation.TextMapCarrier,
+	topic_name string, context_provider propagation.TextMapCarrier,
 ) {
 	propagator := otel.GetTextMapPropagator()
 	provider := otel.GetTracerProvider()
@@ -57,11 +56,11 @@ func (m *Message) initTrace(
 		trace.WithInstrumentationVersion(version),
 	)
 
-	if contextProvider == nil {
-		contextProvider = propagation.MapCarrier(m.Headers)
+	if context_provider == nil {
+		context_provider = propagation.MapCarrier(m.Headers)
 	}
 
-	parentCtx := propagator.Extract(context.Background(), contextProvider)
+	parentCtx := propagator.Extract(context.Background(), context_provider)
 
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(
@@ -80,17 +79,16 @@ func (m *Message) initTrace(
 
 func GenerateTraceMessage(topic_name string, message []byte, propagation propagation.TextMapCarrier) *Message {
 	headers := make(map[string]string)
-	fmt.Println("GenerateTraceMessage")
+
 	msg := &Message{
 		ID:       uuid.New(),
 		Value:    message,
 		Retry:    3,
 		CreateAt: time.Now(),
-		UpdateAt: time.Now(),
 		Headers:  headers,
 	}
 
 	msg.initTrace(topic_name, propagation)
-	fmt.Println("GenerateTraceMessage end")
+
 	return msg
 }
