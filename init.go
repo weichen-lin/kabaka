@@ -21,11 +21,14 @@ func NewKabaka(options *Options) *Kabaka {
 		options = getDefaultOptions()
 	}
 
-	if options.Logger == nil {
-		options.Logger = defaultLogger()
+	var logger Logger
+	if options.Logger != nil {
+		logger = options.Logger
+	} else {
+		logger = &DefaultLogger{}
 	}
 
-	setKabakaLogger(options.Logger)
+	setKabakaLogger(logger)
 
 	return &Kabaka{
 		topics:  make(map[string]*Topic),

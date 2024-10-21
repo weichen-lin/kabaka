@@ -18,6 +18,5 @@ func getDefaultOptions() *Options {
 		DefaultMaxRetries:     3,
 		DefaultRetryDelay:     5 * time.Second,
 		DefaultProcessTimeout: 10 * time.Second,
-		Logger:                defaultLogger(),
 	}
 }

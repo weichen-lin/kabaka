@@ -106,6 +106,7 @@ func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Sp
 	logger := getKabakaLogger()
 
 	msg.Retry--
+	span.RecordError(err)
 
 	if msg.Retry >= 0 {
 		logger.Error(&LogMessage{

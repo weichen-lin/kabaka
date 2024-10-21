@@ -80,11 +80,3 @@ func (l *DefaultLogger) Error(args *LogMessage) {
 	log.Printf("[ERROR] %s: %s - Action: %s, Status: %s, Subscriber: %s, SpendTime: %dms, CreatedAt: %s, Headers: %v",
 		args.TopicName, args.Message, args.Action, args.MessageStatus, args.SubScriber, args.SpendTime, args.CreatedAt.Format(time.RFC3339), args.Headers)
 }
-
-func defaultLogger() Logger {
-	var instance *DefaultLogger
-	once.Do(func() {
-		instance = &DefaultLogger{}
-	})
-	return instance
-}
