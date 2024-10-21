@@ -49,5 +49,11 @@ func TestMain(m *testing.M) {
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}))
 
+	logger := &MockLogger{
+		logs: make([]LogMessage, 0),
+	}
+
+	setKabakaLogger(logger)
+
 	m.Run()
 }

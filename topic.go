@@ -3,6 +3,7 @@ package kabaka
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -29,6 +30,8 @@ type Topic struct {
 	sync.RWMutex
 	subscribers       map[string]*subscriber
 	activeSubscribers []uuid.UUID
+	bufferSize        int
+	maxRetries        int
 	retryDelay        time.Duration
 	processTimeout    time.Duration
 }
@@ -37,7 +40,7 @@ func (t *Topic) subscribe(handler HandleFunc) uuid.UUID {
 	t.Lock()
 	defer t.Unlock()
 
-	ch := make(chan *Message, 20)
+	ch := make(chan *Message, t.bufferSize)
 	id := uuid.New()
 
 	subscriber := &subscriber{
@@ -55,7 +58,7 @@ func (t *Topic) subscribe(handler HandleFunc) uuid.UUID {
 		for msg := range ch {
 			now := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), t.processTimeout)
-			
+
 			span := t.injectCtx(msg)
 
 			result := make(chan error, 1)
@@ -99,14 +102,12 @@ func (t *Topic) publish(msg *Message) error {
 	}
 }
 
-func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Span, duration time.Duration) error {
+func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Span, duration time.Duration) {
 	logger := getKabakaLogger()
 
 	msg.Retry--
 
-	if msg.Retry > 0 {
-		time.Sleep(t.retryDelay)
-
+	if msg.Retry >= 0 {
 		logger.Error(&LogMessage{
 			TopicName:     t.Name,
 			Action:        Consume,
@@ -118,11 +119,20 @@ func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Sp
 			CreatedAt:     time.Now(),
 		})
 
+		backoff := t.retryDelay * time.Duration(math.Pow(2, float64(t.maxRetries-msg.Retry)))
+
+		time.Sleep(backoff)
+
 		select {
 		case t.subscribers[id.String()].ch <- msg:
-			span.SetStatus(codes.Error, fmt.Sprintf("retry attempt %d", 3-msg.Retry))
+			span.SetStatus(codes.Error, fmt.Sprintf("retry attempt %d/%d", t.maxRetries-msg.Retry, t.maxRetries))
+			span.End()
 		default:
-			return fmt.Errorf("channel full, cannot retry message")
+			span.SetStatus(codes.Error, "channel full, cannot retry message")
+			span.End()
+			if msg.RootSpan != nil {
+				msg.RootSpan.End()
+			}
 		}
 	} else {
 		logger.Error(&LogMessage{
@@ -136,13 +146,21 @@ func (t *Topic) handleError(msg *Message, err error, id uuid.UUID, span trace.Sp
 			CreatedAt:     time.Now(),
 		})
 		span.SetStatus(codes.Error, "max retries exceeded")
+		span.End()
+		if msg.RootSpan != nil {
+			msg.RootSpan.End()
+		}
 	}
-
-	return err
 }
 
-func (t *Topic) handleSuccess(msg *Message, id uuid.UUID, span trace.Span, duration time.Duration) error {
-	defer span.End()
+func (t *Topic) handleSuccess(msg *Message, id uuid.UUID, span trace.Span, duration time.Duration) {
+	defer func() {
+		span.End()
+		if msg.RootSpan != nil {
+			msg.RootSpan.End()
+		}
+	}()
+
 	logger := getKabakaLogger()
 
 	logger.Info(&LogMessage{
@@ -155,8 +173,6 @@ func (t *Topic) handleSuccess(msg *Message, id uuid.UUID, span trace.Span, durat
 		SpendTime:     duration.Milliseconds(),
 		CreatedAt:     time.Now(),
 	})
-
-	return nil
 }
 
 func (t *Topic) unsubscribe(id uuid.UUID) error {
@@ -199,6 +215,7 @@ func (t *Topic) closeTopic() {
 		close(sub.ch)
 	}
 	t.subscribers = nil
+	t.activeSubscribers = nil
 }
 
 func (t *Topic) injectCtx(msg *Message) trace.Span {
@@ -225,12 +242,30 @@ func (t *Topic) injectCtx(msg *Message) trace.Span {
 	return span
 }
 
-func NewTopic(name string, retryDelay time.Duration, processtimeOut time.Duration) *Topic {
+func (t *Topic) generateTraceMessage(topicName string, message []byte, propagation propagation.TextMapCarrier) *Message {
+	headers := make(map[string]string)
+
+	msg := &Message{
+		ID:       uuid.New(),
+		Value:    message,
+		Retry:    t.maxRetries,
+		CreateAt: time.Now(),
+		Headers:  headers,
+	}
+
+	msg.initTrace(topicName, propagation)
+
+	return msg
+}
+
+func NewTopic(name string, options *Options) *Topic {
 	return &Topic{
 		Name:              name,
 		subscribers:       make(map[string]*subscriber),
 		activeSubscribers: make([]uuid.UUID, 0),
-		retryDelay:        retryDelay,
-		processTimeout:    processtimeOut,
+		maxRetries:        options.DefaultMaxRetries,
+		retryDelay:        options.DefaultRetryDelay,
+		processTimeout:    options.DefaultProcessTimeout,
+		bufferSize:        options.BufferSize,
 	}
 }

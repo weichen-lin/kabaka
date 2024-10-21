@@ -46,7 +46,7 @@ func (m *Message) Keys() []string {
 }
 
 func (m *Message) initTrace(
-	topic_name string, context_provider propagation.TextMapCarrier,
+	topicName string, contextProvider propagation.TextMapCarrier,
 ) {
 	propagator := otel.GetTextMapPropagator()
 	provider := otel.GetTracerProvider()
@@ -56,39 +56,23 @@ func (m *Message) initTrace(
 		trace.WithInstrumentationVersion(version),
 	)
 
-	if context_provider == nil {
-		context_provider = propagation.MapCarrier(m.Headers)
+	if contextProvider == nil {
+		contextProvider = propagation.MapCarrier(m.Headers)
 	}
 
-	parentCtx := propagator.Extract(context.Background(), context_provider)
+	parentCtx := propagator.Extract(context.Background(), contextProvider)
 
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(
-			semconv.MessagingDestinationKey.String(topic_name),
+			semconv.MessagingDestinationKey.String(topicName),
 		),
 		trace.WithSpanKind(trace.SpanKindProducer),
 	}
 
-	traceName := fmt.Sprintf("send message to %s", topic_name)
+	traceName := fmt.Sprintf("send message to %s", topicName)
 	ctx, span := tracer.Start(parentCtx, traceName, opts...)
 
 	propagator.Inject(ctx, m)
 
 	m.RootSpan = span
-}
-
-func GenerateTraceMessage(topic_name string, message []byte, propagation propagation.TextMapCarrier) *Message {
-	headers := make(map[string]string)
-
-	msg := &Message{
-		ID:       uuid.New(),
-		Value:    message,
-		Retry:    3,
-		CreateAt: time.Now(),
-		Headers:  headers,
-	}
-
-	msg.initTrace(topic_name, propagation)
-
-	return msg
 }
