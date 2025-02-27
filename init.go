@@ -2,9 +2,6 @@ package kabaka
 
 import (
 	"sync"
-
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 type Kabaka struct {
@@ -13,22 +10,10 @@ type Kabaka struct {
 	options *Options
 }
 
-var defaultTraceName = "kabaka"
-var version = "1.0.0"
-
 func NewKabaka(options *Options) *Kabaka {
 	if options == nil {
 		options = getDefaultOptions()
 	}
-
-	var logger Logger
-	if options.Logger != nil {
-		logger = options.Logger
-	} else {
-		logger = &DefaultLogger{}
-	}
-
-	setKabakaLogger(logger)
 
 	return &Kabaka{
 		topics:  make(map[string]*Topic),
@@ -36,7 +21,7 @@ func NewKabaka(options *Options) *Kabaka {
 	}
 }
 
-func (k *Kabaka) CreateTopic(name string) error {
+func (k *Kabaka) CreateTopic(name string, handler HandleFunc) error {
 	k.Lock()
 	defer k.Unlock()
 
@@ -45,13 +30,13 @@ func (k *Kabaka) CreateTopic(name string) error {
 	}
 
 	topic := &Topic{
-		Name:              name,
-		subscribers:       make(map[string]*subscriber),
-		activeSubscribers: make([]uuid.UUID, 0),
-		bufferSize:        k.options.BufferSize,
-		maxRetries:        k.options.DefaultMaxRetries,
-		retryDelay:        k.options.DefaultRetryDelay,
-		processTimeout:    k.options.DefaultProcessTimeout,
+		Name:           name,
+		bufferSize:     k.options.BufferSize,
+		maxRetries:     k.options.MaxRetries,
+		retryDelay:     k.options.RetryDelay,
+		processTimeout: k.options.ProcessTimeout,
+		tracer:         k.options.Tracer,
+		handler:        handler,
 	}
 
 	k.topics[name] = topic
@@ -59,43 +44,13 @@ func (k *Kabaka) CreateTopic(name string) error {
 	return nil
 }
 
-func (k *Kabaka) Subscribe(name string, handler HandleFunc) (uuid.UUID, error) {
-	k.RLock()
-	defer k.RUnlock()
-
-	topic, ok := k.topics[name]
-	if !ok {
-		return uuid.Nil, ErrTopicNotFound
-	}
-
-	return topic.subscribe(handler), nil
-}
-
-func (k *Kabaka) Publish(name string, message []byte, propagation propagation.TextMapCarrier) error {
+func (k *Kabaka) Publish(name string, message []byte) error {
 	topic, ok := k.topics[name]
 	if !ok {
 		return ErrTopicNotFound
 	}
 
-	msg := topic.generateTraceMessage(topic.Name, message, propagation)
-
-	topic.injectCtx(msg)
-
-	err := topic.publish(msg)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (k *Kabaka) UnSubscribe(name string, id uuid.UUID) error {
-	topic, ok := k.topics[name]
-	if !ok {
-		return ErrTopicNotFound
-	}
-
-	err := topic.unsubscribe(id)
+	err := topic.Publish(message)
 	if err != nil {
 		return err
 	}
@@ -112,7 +67,7 @@ func (k *Kabaka) CloseTopic(name string) error {
 		return ErrTopicNotFound
 	}
 
-	topic.closeTopic()
+	topic.Stop()
 
 	delete(k.topics, name)
 	return nil
@@ -123,8 +78,33 @@ func (k *Kabaka) Close() error {
 	defer k.Unlock()
 
 	for _, topic := range k.topics {
-		topic.closeTopic()
+		topic.Stop()
 	}
 	k.topics = nil
 	return nil
+}
+
+type Metric struct {
+	TopicName     string
+	ActiveWorkers int32
+	BusyWorkers   int32
+	OnGoingJobs   int32
+}
+
+func (k *Kabaka) GetMetrics() []*Metric {
+	k.RLock()
+	defer k.RUnlock()
+
+	metrics := make([]*Metric, 0)
+
+	for _, topic := range k.topics {
+		metrics = append(metrics, &Metric{
+			TopicName:     topic.Name,
+			ActiveWorkers: topic.activeWorkers,
+			BusyWorkers:   topic.busyWorkers,
+			OnGoingJobs:   topic.onGoingJobs,
+		})
+	}
+
+	return metrics
 }
