@@ -5,18 +5,25 @@ import (
 )
 
 type Options struct {
-	BufferSize            int
-	DefaultMaxRetries     int
-	DefaultRetryDelay     time.Duration
-	DefaultProcessTimeout time.Duration
-	Logger                Logger
+	BufferSize        int
+	MaxRetries        int
+	MaxWorkers        int
+	MaxActiveHandlers int
+	RetryDelay        time.Duration
+	ProcessTimeout    time.Duration
+	Logger            Logger
+	Tracer            Tracer
 }
 
 func getDefaultOptions() *Options {
 	return &Options{
-		BufferSize:            24,
-		DefaultMaxRetries:     3,
-		DefaultRetryDelay:     5 * time.Second,
-		DefaultProcessTimeout: 10 * time.Second,
+		BufferSize:        24,
+		MaxRetries:        3,
+		MaxWorkers:        20,
+		MaxActiveHandlers: 40,
+		RetryDelay:        5 * time.Second,
+		ProcessTimeout:    10 * time.Second,
+		Logger:            &DefaultLogger{},
+		Tracer:            &DefaultTracer{},
 	}
 }
