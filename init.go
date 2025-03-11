@@ -5,7 +5,7 @@ import (
 )
 
 type Kabaka struct {
-	sync.RWMutex
+	mu sync.RWMutex
 	topics  map[string]*Topic
 	options *Options
 }
@@ -22,22 +22,14 @@ func NewKabaka(options *Options) *Kabaka {
 }
 
 func (k *Kabaka) CreateTopic(name string, handler HandleFunc) error {
-	k.Lock()
-	defer k.Unlock()
+	k.mu.Lock()
+	defer k.mu.Unlock()
 
 	if _, ok := k.topics[name]; ok {
 		return ErrTopicAlreadyCreated
 	}
 
-	topic := &Topic{
-		Name:           name,
-		bufferSize:     k.options.BufferSize,
-		maxRetries:     k.options.MaxRetries,
-		retryDelay:     k.options.RetryDelay,
-		processTimeout: k.options.ProcessTimeout,
-		tracer:         k.options.Tracer,
-		handler:        handler,
-	}
+	topic := NewTopic(name, k.options, handler)
 
 	k.topics[name] = topic
 
@@ -59,8 +51,8 @@ func (k *Kabaka) Publish(name string, message []byte) error {
 }
 
 func (k *Kabaka) CloseTopic(name string) error {
-	k.Lock()
-	defer k.Unlock()
+	k.mu.Lock()
+	defer k.mu.Unlock()
 
 	topic, ok := k.topics[name]
 	if !ok {
@@ -74,8 +66,8 @@ func (k *Kabaka) CloseTopic(name string) error {
 }
 
 func (k *Kabaka) Close() error {
-	k.Lock()
-	defer k.Unlock()
+	k.mu.Lock()
+	defer k.mu.Unlock()
 
 	for _, topic := range k.topics {
 		topic.Stop()
@@ -92,8 +84,8 @@ type Metric struct {
 }
 
 func (k *Kabaka) GetMetrics() []*Metric {
-	k.RLock()
-	defer k.RUnlock()
+	k.mu.RLock()
+	defer k.mu.RUnlock()
 
 	metrics := make([]*Metric, 0)
 
