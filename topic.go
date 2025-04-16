@@ -25,7 +25,6 @@ type Topic struct {
 	quit    chan bool
 
 	logger Logger
-	tracer Tracer
 
 	// metrics
 	activeWorkers int32
@@ -44,7 +43,6 @@ func NewTopic(name string, options *Options, hadler HandleFunc) *Topic {
 		retryDelay:     options.RetryDelay,
 		processTimeout: options.ProcessTimeout,
 		logger:         options.Logger,
-		tracer:         options.Tracer,
 		handler:        hadler,
 		quit:           make(chan bool),
 	}

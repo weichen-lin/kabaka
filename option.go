@@ -12,7 +12,6 @@ type Options struct {
 	RetryDelay        time.Duration
 	ProcessTimeout    time.Duration
 	Logger            Logger
-	Tracer            Tracer
 }
 
 func getDefaultOptions() *Options {
@@ -24,6 +23,5 @@ func getDefaultOptions() *Options {
 		RetryDelay:        5 * time.Second,
 		ProcessTimeout:    10 * time.Second,
 		Logger:            &DefaultLogger{},
-		Tracer:            &DefaultTracer{},
 	}
 }

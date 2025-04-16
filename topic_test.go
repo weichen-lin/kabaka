@@ -16,7 +16,6 @@ func TestNewTopic(t *testing.T) {
 		RetryDelay:     time.Second,
 		ProcessTimeout: time.Second * 5,
 		Logger:         &DefaultLogger{},
-		Tracer:         &DefaultTracer{},
 	}
 
 	topic := NewTopic("test-topic", options, func(msg *Message) error {

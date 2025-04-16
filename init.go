@@ -5,7 +5,7 @@ import (
 )
 
 type Kabaka struct {
-	mu sync.RWMutex
+	mu      sync.RWMutex
 	topics  map[string]*Topic
 	options *Options
 }
