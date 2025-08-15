@@ -4,19 +4,26 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 type Worker struct {
+	wg sync.WaitGroup
+
 	id         uuid.UUID
 	jobChannel chan *Message
 	quit       chan bool
 	topic      *Topic
 }
 
-func NewWorker(id uuid.UUID, topic *Topic) *Worker {
+func NewWorker(
+	topic *Topic,
+) *Worker {
+	id := uuid.New()
+
 	return &Worker{
 		id:         id,
 		jobChannel: make(chan *Message),
@@ -25,17 +32,20 @@ func NewWorker(id uuid.UUID, topic *Topic) *Worker {
 	}
 }
 
-func (w *Worker) Start() {
-	w.topic.workerJoin()
+func (w *Worker) start() chan *Message {
+	w.wg.Add(1)
 
 	go func() {
-
-		w.topic.workerPool <- w.jobChannel
+		defer w.wg.Done()
 
 		for {
-
 			select {
-			case msg := <-w.jobChannel:
+			case msg, ok := <-w.jobChannel:
+				if !ok {
+					w.topic.workerLeave()
+					return
+				}
+
 				w.topic.workerStartWork()
 
 				now := time.Now()
@@ -53,7 +63,7 @@ func (w *Worker) Start() {
 				case err := <-done:
 					duration := time.Since(now)
 					if err != nil {
-						w.handleError(msg, duration)
+						w.handleError(err, msg, duration)
 					} else {
 						w.handleSuccess(msg, duration)
 					}
@@ -73,27 +83,37 @@ func (w *Worker) Start() {
 			}
 		}
 	}()
+
+	return w.jobChannel
 }
 
-func (w *Worker) Stop() {
-	w.quit <- true
+func (w *Worker) stop() {
+	// 使用 sync.Once 防止多次關閉或檢查 channel 是否已關閉
+	select {
+	case <-w.quit:
+		// 已關閉
+	default:
+		close(w.quit) // 向 goroutine 發出停止信號
+	}
+	w.wg.Wait() // 等待 goroutine 實際退出
 }
 
 func (w *Worker) handelTimeOut(msg *Message, duration time.Duration) {
 
 	msg.Retry--
 
-	if msg.Retry >= 0 {
-		w.topic.logger.Error(&LogMessage{
-			TopicName:     w.topic.Name,
-			Action:        Consume,
-			MessageID:     msg.ID,
-			Message:       string(msg.Value),
-			MessageStatus: Retry,
-			SpendTime:     duration.Milliseconds(),
-			CreatedAt:     time.Now(),
-		})
+	w.topic.logger.Warn(&LogMessage{
+		TopicName:     w.topic.Name,
+		Action:        Consume,
+		MessageID:     msg.ID,
+		Message:       string(msg.Value),
+		MessageStatus: Retry,
+		SpendTime:     duration.Milliseconds(),
+		CreatedAt:     time.Now(),
+		Headers:       msg.Headers,
+	})
 
+	if msg.Retry >= 0 {
 		backoff := w.topic.retryDelay.Abs() * time.Duration(math.Pow(2, float64(w.topic.maxRetries-msg.Retry)))
 
 		time.Sleep(backoff)
@@ -104,33 +124,24 @@ func (w *Worker) handelTimeOut(msg *Message, duration time.Duration) {
 		default:
 			fmt.Println("queue full, cannot retry message")
 		}
-	} else {
-		w.topic.logger.Error(&LogMessage{
-			TopicName:     w.topic.Name,
-			Action:        Consume,
-			MessageID:     msg.ID,
-			Message:       string(msg.Value),
-			MessageStatus: Error,
-			SpendTime:     duration.Milliseconds(),
-			CreatedAt:     time.Now(),
-		})
 	}
 }
 
-func (w *Worker) handleError(msg *Message, duration time.Duration) {
+func (w *Worker) handleError(err error, msg *Message, duration time.Duration) {
 	msg.Retry--
 
-	if msg.Retry >= 0 {
-		w.topic.logger.Error(&LogMessage{
-			TopicName:     w.topic.Name,
-			Action:        Consume,
-			MessageID:     msg.ID,
-			Message:       string(msg.Value),
-			MessageStatus: Retry,
-			SpendTime:     duration.Milliseconds(),
-			CreatedAt:     time.Now(),
-		})
+	w.topic.logger.Error(&LogMessage{
+		TopicName:     w.topic.Name,
+		Action:        Consume,
+		MessageID:     msg.ID,
+		Message:       err.Error(),
+		MessageStatus: Retry,
+		SpendTime:     duration.Milliseconds(),
+		CreatedAt:     time.Now().UTC(),
+		Headers:       msg.Headers,
+	})
 
+	if msg.Retry > 0 {
 		backoff := w.topic.retryDelay.Abs() * time.Duration(math.Pow(2, float64(w.topic.maxRetries-msg.Retry)))
 
 		time.Sleep(backoff)
@@ -141,20 +152,14 @@ func (w *Worker) handleError(msg *Message, duration time.Duration) {
 		default:
 			fmt.Println("queue full, cannot retry message")
 		}
-	} else {
-		w.topic.logger.Error(&LogMessage{
-			TopicName:     w.topic.Name,
-			Action:        Consume,
-			MessageID:     msg.ID,
-			Message:       string(msg.Value),
-			MessageStatus: Error,
-			SpendTime:     duration.Milliseconds(),
-			CreatedAt:     time.Now(),
-		})
 	}
 }
 
 func (w *Worker) handleSuccess(msg *Message, duration time.Duration) {
+	if w.topic.logger == nil {
+		return
+	}
+
 	w.topic.logger.Info(&LogMessage{
 		TopicName:     w.topic.Name,
 		Action:        Consume,
@@ -163,5 +168,6 @@ func (w *Worker) handleSuccess(msg *Message, duration time.Duration) {
 		MessageStatus: Success,
 		SpendTime:     duration.Milliseconds(),
 		CreatedAt:     time.Now(),
+		Headers:       msg.Headers,
 	})
 }

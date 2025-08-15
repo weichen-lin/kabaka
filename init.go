@@ -5,23 +5,17 @@ import (
 )
 
 type Kabaka struct {
-	mu      sync.RWMutex
-	topics  map[string]*Topic
-	options *Options
+	mu     sync.RWMutex
+	topics map[string]*Topic
 }
 
-func NewKabaka(options *Options) *Kabaka {
-	if options == nil {
-		options = getDefaultOptions()
-	}
-
+func NewKabaka() *Kabaka {
 	return &Kabaka{
-		topics:  make(map[string]*Topic),
-		options: options,
+		topics: make(map[string]*Topic),
 	}
 }
 
-func (k *Kabaka) CreateTopic(name string, handler HandleFunc) error {
+func (k *Kabaka) CreateTopic(name string, handler HandleFunc, options ...Option) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
@@ -29,7 +23,7 @@ func (k *Kabaka) CreateTopic(name string, handler HandleFunc) error {
 		return ErrTopicAlreadyCreated
 	}
 
-	topic := NewTopic(name, k.options, handler)
+	topic := newTopic(name, handler, options...)
 
 	k.topics[name] = topic
 
@@ -42,7 +36,7 @@ func (k *Kabaka) Publish(name string, message []byte) error {
 		return ErrTopicNotFound
 	}
 
-	err := topic.Publish(message)
+	err := topic.publish(message)
 	if err != nil {
 		return err
 	}
@@ -59,7 +53,7 @@ func (k *Kabaka) CloseTopic(name string) error {
 		return ErrTopicNotFound
 	}
 
-	topic.Stop()
+	topic.stop()
 
 	delete(k.topics, name)
 	return nil
@@ -70,9 +64,9 @@ func (k *Kabaka) Close() error {
 	defer k.mu.Unlock()
 
 	for _, topic := range k.topics {
-		topic.Stop()
+		topic.stop()
 	}
-	k.topics = nil
+
 	return nil
 }
 

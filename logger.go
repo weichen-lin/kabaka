@@ -33,6 +33,8 @@ const (
 	Publish   Action = "publish"
 	Consume   Action = "consume"
 	Cancelled Action = "cancelled"
+
+	WorkerStart Action = "worker_start"
 )
 
 type MessageStatus string
@@ -41,6 +43,9 @@ const (
 	Success MessageStatus = "success"
 	Retry   MessageStatus = "retry"
 	Error   MessageStatus = "error"
+
+	WorkerStartFailed MessageStatus = "worker_start_failed"
+	Timeout           MessageStatus = "timeout"
 )
 
 type LogMessage struct {
@@ -57,21 +62,21 @@ type LogMessage struct {
 type DefaultLogger struct{}
 
 func (l *DefaultLogger) Debug(args *LogMessage) {
-	log.Printf("%s[DEBUG]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s, Headers: %v\n",
-		colorCyan, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339), args.Headers)
+	log.Printf("%s[DEBUG]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s\n",
+		colorCyan, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339))
 }
 
 func (l *DefaultLogger) Info(args *LogMessage) {
-	log.Printf("%s[INFO]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s, Headers: %v\n",
-		colorGreen, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339), args.Headers)
+	log.Printf("%s[INFO]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s\n",
+		colorGreen, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339))
 }
 
 func (l *DefaultLogger) Warn(args *LogMessage) {
-	log.Printf("%s[WARN]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s, Headers: %v\n",
-		colorYellow, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339), args.Headers)
+	log.Printf("%s[WARN]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s\n",
+		colorYellow, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339))
 }
 
 func (l *DefaultLogger) Error(args *LogMessage) {
-	log.Printf("%s[ERROR]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s, Headers: %v\n",
-		colorRed, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339), args.Headers)
+	log.Printf("%s[ERROR]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s\n",
+		colorRed, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339))
 }

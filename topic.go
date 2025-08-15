@@ -1,6 +1,7 @@
 package kabaka
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,61 +31,179 @@ type Topic struct {
 	activeWorkers int32
 	busyWorkers   int32
 	onGoingJobs   int32
+
+	mu           sync.RWMutex
+	dispatcherWg sync.WaitGroup
+	stopOnce     sync.Once
 }
 
-func NewTopic(name string, options *Options, hadler HandleFunc) *Topic {
+type Option func(*Topic)
+
+func newTopic(name string, hadler HandleFunc, options ...Option) *Topic {
 	t := &Topic{
 		Name:           name,
-		workerPool:     make(chan chan *Message, options.MaxWorkers),
-		messageQueue:   make(chan *Message, options.BufferSize),
-		bufferSize:     options.BufferSize,
-		maxRetries:     options.MaxRetries,
-		maxWorkers:     options.MaxWorkers,
-		retryDelay:     options.RetryDelay,
-		processTimeout: options.ProcessTimeout,
-		logger:         options.Logger,
+		bufferSize:     24,
+		maxRetries:     3,
+		maxWorkers:     20,
+		retryDelay:     5 * time.Second,
+		processTimeout: 10 * time.Second,
+		logger:         &DefaultLogger{},
 		handler:        hadler,
 		quit:           make(chan bool),
 	}
 
-	t.Start()
+	for _, opt := range options {
+		opt(t)
+	}
+
+	t.workerPool = make(chan chan *Message, t.maxWorkers)
+	t.messageQueue = make(chan *Message, t.bufferSize)
+
+	t.start()
 
 	return t
 }
 
-func (t *Topic) Start() {
-	t.workers = make([]*Worker, t.maxWorkers)
-	for i := 0; i < t.maxWorkers; i++ {
-		worker := NewWorker(uuid.New(), t)
-		t.workers[i] = worker
-		worker.Start()
+func WithMaxWorkers(maxWorkers int) Option {
+	return func(t *Topic) {
+		t.maxWorkers = maxWorkers
+	}
+}
+
+func WithBufferSize(bufferSize int) Option {
+	return func(t *Topic) {
+		t.bufferSize = bufferSize
+		t.messageQueue = make(chan *Message, bufferSize)
+	}
+}
+
+func WithRetryDelay(retryDelay time.Duration) Option {
+	return func(t *Topic) {
+		t.retryDelay = retryDelay
+	}
+}
+
+func WithProcessTimeout(processTimeout time.Duration) Option {
+	return func(t *Topic) {
+		t.processTimeout = processTimeout
+	}
+}
+
+func WithMaxRetries(maxRetries int) Option {
+	return func(t *Topic) {
+		t.maxRetries = maxRetries
+	}
+}
+
+func WithLogger(logger Logger) Option {
+	return func(t *Topic) {
+		t.logger = logger
+	}
+}
+
+func (t *Topic) start() {
+	t.mu.Lock()
+
+	// 如果 workers 已經初始化，則不需要再次初始化
+	if t.workers != nil {
+		t.mu.Unlock()
+		return
 	}
 
+	t.workers = make([]*Worker, t.maxWorkers)
+	for i := 0; i < t.maxWorkers; i++ {
+		worker := NewWorker(t)
+		t.workers[i] = worker
+		jobCh := worker.start()
+		if jobCh == nil {
+			t.logger.Error(
+				&LogMessage{
+					TopicName:     t.Name,
+					Action:        WorkerStart,
+					MessageID:     uuid.Nil,
+					Message:       "worker start failed",
+					MessageStatus: WorkerStartFailed,
+					SpendTime:     0,
+					CreatedAt:     time.Now(),
+					Headers:       nil,
+				},
+			)
+			continue
+		}
+		t.workerJoin()
+	}
+	t.mu.Unlock()
+
+	t.dispatcherWg.Add(1)
 	go t.dispatch()
 }
 
-func (t *Topic) Stop() {
-	for _, worker := range t.workers {
-		worker.Stop()
-	}
+func (t *Topic) stop() {
+	t.stopOnce.Do(func() {
+		// 1. 先關閉 quit channel，通知所有 goroutine 停止
+		close(t.quit)
+
+		// 2. 等待 dispatcher 退出
+		t.dispatcherWg.Wait()
+
+		// 3. 停止所有 worker 並等待它們完成
+		t.mu.RLock()
+		workers := make([]*Worker, len(t.workers))
+		copy(workers, t.workers) // 複製 slice 以避免並發修改
+		t.mu.RUnlock()
+
+		var wg sync.WaitGroup
+		wg.Add(len(workers))
+		for _, worker := range workers {
+			if worker != nil {
+				go func(w *Worker) {
+					defer wg.Done()
+					w.stop()
+				}(worker)
+			} else {
+				wg.Done()
+			}
+		}
+		wg.Wait() // 等待所有 worker 停止
+
+		// 4. 清理資源
+		t.mu.Lock()
+		t.workers = nil
+		t.mu.Unlock()
+
+		// 如果需要，可以關閉其他 channel
+		// close(t.workerPool)
+		// close(t.messageQueue) // 謹慎處理，如果 Publish 可能仍被呼叫
+	})
 }
 
 func (t *Topic) dispatch() {
+	defer t.dispatcherWg.Done()
+
 	for {
 		select {
 		case msg := <-t.messageQueue:
-			jobChannel := <-t.workerPool
-			jobChannel <- msg
+			var jobChannel chan *Message
+			select {
+			case jobChannel = <-t.workerPool:
+			case <-t.quit:
+				return
+			}
+
+			select {
+			case jobChannel <- msg:
+			case <-t.quit:
+				return
+			}
 		case <-t.quit:
 			return
 		}
 	}
 }
 
-func (t *Topic) Publish(message []byte) error {
+func (t *Topic) publish(message []byte) error {
 	msg := t.generateTraceMessage(message)
 
-	// 使用 select 非阻塞發送
 	select {
 	case t.messageQueue <- msg:
 		t.logger.Info(&LogMessage{
@@ -95,6 +214,7 @@ func (t *Topic) Publish(message []byte) error {
 			MessageStatus: Success,
 			SpendTime:     0,
 			CreatedAt:     time.Now(),
+			Headers:       msg.Headers,
 		})
 		return nil
 	case <-time.After(100 * time.Millisecond):
@@ -118,6 +238,10 @@ func (t *Topic) generateTraceMessage(message []byte) *Message {
 
 func (t *Topic) workerJoin() {
 	atomic.AddInt32(&t.activeWorkers, 1)
+}
+
+func (t *Topic) workerLeave() {
+	atomic.AddInt32(&t.activeWorkers, -1)
 }
 
 func (t *Topic) workerStartWork() {
@@ -148,4 +272,16 @@ func (t *Topic) GetBusyWorkers() int32 {
 
 func (t *Topic) GetOnGoingJobs() int32 {
 	return atomic.LoadInt32(&t.onGoingJobs)
+}
+
+func (t *Topic) workerStop(id uuid.UUID) {
+	for i, worker := range t.workers {
+		if worker.id == id {
+			// 重新分配 worker
+			t.workers = append(t.workers[:i], t.workers[i+1:]...)
+			// 更新 active workers
+			atomic.AddInt32(&t.activeWorkers, -1)
+			break
+		}
+	}
 }
