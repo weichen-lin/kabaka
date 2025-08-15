@@ -2,12 +2,10 @@ package kabaka
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Message struct {
-	ID        uuid.UUID
+	ID        string
 	Value     []byte
 	Retry     int
 	CreatedAt time.Time

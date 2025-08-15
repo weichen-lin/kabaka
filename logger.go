@@ -3,8 +3,6 @@ package kabaka
 import (
 	"log"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // ANSI 顏色代碼
@@ -51,7 +49,7 @@ const (
 type LogMessage struct {
 	TopicName     string            `json:"topic_name"`
 	Action        Action            `json:"action"`
-	MessageID     uuid.UUID         `json:"message_id"`
+	MessageID     string            `json:"message_id"`
 	Message       string            `json:"message"`
 	MessageStatus MessageStatus     `json:"message_status"`
 	SpendTime     int64             `json:"spend_time"`
