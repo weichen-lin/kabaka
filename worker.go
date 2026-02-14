@@ -144,11 +144,15 @@ func (w *Worker) drainJobChannel() {
 			if !ok {
 				return // channel 已關閉
 			}
-			// 將未處理的消息重新放回 messageQueue
-			// 使用非阻塞的 select 避免死鎖
-			select {
-			case w.topic.messageQueue <- msg:
-				// 成功放回隊列
+			// 將未處理的消息重新放回 Broker
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			err := w.topic.broker.Push(ctx, w.topic.Name, msg)
+			if err == nil {
+				_ = w.topic.broker.Ack(ctx, w.topic.Name, msg)
+			}
+			cancel()
+
+			if err == nil {
 				if w.topic.logger != nil {
 					w.topic.logger.Warn(&LogMessage{
 						TopicName:     w.topic.Name,
@@ -161,8 +165,8 @@ func (w *Worker) drainJobChannel() {
 						Headers:       msg.Headers,
 					})
 				}
-			default:
-				// messageQueue 已滿，記錄警告
+			} else {
+				// 記錄錯誤
 				if w.topic.logger != nil {
 					w.topic.logger.Error(&LogMessage{
 						TopicName:     w.topic.Name,
@@ -175,7 +179,6 @@ func (w *Worker) drainJobChannel() {
 						Headers:       msg.Headers,
 					})
 				}
-				// TODO: 可以考慮將這些消息放入 dead letter queue
 			}
 		default:
 			return // 沒有更多消息
@@ -203,12 +206,15 @@ func (w *Worker) handleTimeOut(msg *Message, duration time.Duration) {
 
 		time.Sleep(backoff)
 
-		select {
-		case w.topic.messageQueue <- msg:
-		default:
-			// TODO: move to dead letter queue
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = w.topic.broker.Push(ctx, w.topic.Name, msg)
+		cancel()
 	}
+
+	// Always Ack to remove from processing queue
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = w.topic.broker.Ack(ctx, w.topic.Name, msg)
 }
 
 func (w *Worker) handleError(err error, msg *Message, duration time.Duration) {
@@ -230,27 +236,33 @@ func (w *Worker) handleError(err error, msg *Message, duration time.Duration) {
 
 		time.Sleep(backoff)
 
-		select {
-		case w.topic.messageQueue <- msg:
-		default:
-			// TODO: move to dead letter queue
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = w.topic.broker.Push(ctx, w.topic.Name, msg)
+		cancel()
 	}
+
+	// Always Ack to remove from processing queue
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = w.topic.broker.Ack(ctx, w.topic.Name, msg)
 }
 
 func (w *Worker) handleSuccess(msg *Message, duration time.Duration) {
-	if w.topic.logger == nil {
-		return
+	if w.topic.logger != nil {
+		w.topic.logger.Info(&LogMessage{
+			TopicName:     w.topic.Name,
+			Action:        Consume,
+			MessageID:     msg.ID,
+			Message:       string(msg.Value),
+			MessageStatus: Success,
+			SpendTime:     duration.Milliseconds(),
+			CreatedAt:     time.Now().UTC(),
+			Headers:       msg.Headers,
+		})
 	}
 
-	w.topic.logger.Info(&LogMessage{
-		TopicName:     w.topic.Name,
-		Action:        Consume,
-		MessageID:     msg.ID,
-		Message:       string(msg.Value),
-		MessageStatus: Success,
-		SpendTime:     duration.Milliseconds(),
-		CreatedAt:     time.Now().UTC(),
-		Headers:       msg.Headers,
-	})
+	// Acknowledge the message in the broker
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = w.topic.broker.Ack(ctx, w.topic.Name, msg)
 }

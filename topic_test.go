@@ -39,7 +39,8 @@ func (m *MockLogger) Error(args *LogMessage) {
 // TestNewTopic_DefaultOptions verifies that a new topic is created with correct default values.
 func TestNewTopic_DefaultOptions(t *testing.T) {
 	handler := func(ctx context.Context, msg *Message) error { return nil }
-	topic := newTopic("test-defaults", handler)
+	broker := NewMemoryBroker(24)
+	topic := newTopic("test-defaults", broker, handler)
 	defer topic.stop()
 
 	if topic.Name != "test-defaults" {
@@ -72,7 +73,8 @@ func TestNewTopic_DefaultOptions(t *testing.T) {
 func TestNewTopic_WithOptions(t *testing.T) {
 	handler := func(ctx context.Context, msg *Message) error { return nil }
 	logger := &MockLogger{}
-	topic := newTopic("test-options", handler,
+	broker := NewMemoryBroker(24)
+	topic := newTopic("test-options", broker, handler,
 		WithMaxWorkers(10),
 		WithBufferSize(50),
 		WithMaxRetries(5),
@@ -117,7 +119,7 @@ func TestTopic_Publish_Success(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}
-	topic := newTopic("test-publish-success", handler, WithBufferSize(1))
+	topic := newTopic("test-publish-success", NewMemoryBroker(1), handler, WithBufferSize(1))
 	defer topic.stop()
 
 	// 2. Action
@@ -146,7 +148,7 @@ func TestTopic_Publish_Timeout(t *testing.T) {
 		<-blocker
 		return nil
 	}
-	topic := newTopic("test-publish-timeout", handler,
+	topic := newTopic("test-publish-timeout", NewMemoryBroker(1), handler,
 		WithMaxWorkers(1),                       // Only one worker
 		WithBufferSize(1),                       // Buffer of size 1
 		WithPublishTimeout(50*time.Millisecond), // Short timeout
@@ -185,7 +187,7 @@ func TestTopic_Publish_Timeout(t *testing.T) {
 
 // TestTopic_Stop_Idempotent verifies that calling stop multiple times does not cause a panic.
 func TestTopic_Stop_Idempotent(t *testing.T) {
-	topic := newTopic("test-stop-idempotent", func(ctx context.Context, msg *Message) error { return nil })
+	topic := newTopic("test-stop-idempotent", NewMemoryBroker(24), func(ctx context.Context, msg *Message) error { return nil })
 
 	// Call stop multiple times
 	topic.stop()

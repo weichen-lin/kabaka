@@ -1,17 +1,34 @@
 package kabaka
 
 import (
+	"context"
 	"sync"
 )
 
 type Kabaka struct {
 	mu     sync.RWMutex
 	topics map[string]*Topic
+	broker Broker
 }
 
-func NewKabaka() *Kabaka {
-	return &Kabaka{
+type KabakaOption func(*Kabaka)
+
+func NewKabaka(options ...KabakaOption) *Kabaka {
+	k := &Kabaka{
 		topics: make(map[string]*Topic),
+		broker: NewMemoryBroker(24), // Default memory broker
+	}
+
+	for _, opt := range options {
+		opt(k)
+	}
+
+	return k
+}
+
+func WithBroker(broker Broker) KabakaOption {
+	return func(k *Kabaka) {
+		k.broker = broker
 	}
 }
 
@@ -23,7 +40,7 @@ func (k *Kabaka) CreateTopic(name string, handler HandleFunc, options ...Option)
 		return ErrTopicAlreadyCreated
 	}
 
-	topic := newTopic(name, handler, options...)
+	topic := newTopic(name, k.broker, handler, options...)
 
 	k.topics[name] = topic
 
@@ -67,6 +84,10 @@ func (k *Kabaka) Close() error {
 		topic.stop()
 	}
 
+	if k.broker != nil {
+		return k.broker.Close()
+	}
+
 	return nil
 }
 
@@ -75,6 +96,7 @@ type Metric struct {
 	ActiveWorkers int32
 	BusyWorkers   int32
 	OnGoingJobs   int32
+	PendingJobs   int64
 }
 
 func (k *Kabaka) GetMetrics() []*Metric {
@@ -84,11 +106,13 @@ func (k *Kabaka) GetMetrics() []*Metric {
 	metrics := make([]*Metric, 0)
 
 	for _, topic := range k.topics {
+		pending, _ := k.broker.Len(context.Background(), topic.Name)
 		metrics = append(metrics, &Metric{
 			TopicName:     topic.Name,
 			ActiveWorkers: topic.activeWorkers,
 			BusyWorkers:   topic.busyWorkers,
 			OnGoingJobs:   topic.onGoingJobs,
+			PendingJobs:   pending,
 		})
 	}
 

@@ -19,7 +19,7 @@ func TestWorker_ProcessMessage(t *testing.T) {
 
 	// Create a new topic with the test handler
 	// The topic will internally create and manage workers
-	topic := newTopic("test-worker-process", handler, WithMaxWorkers(1), WithBufferSize(1))
+	topic := newTopic("test-worker-process", NewMemoryBroker(1), handler, WithMaxWorkers(1), WithBufferSize(1))
 	defer topic.stop()
 
 	// Publish a message to the topic
@@ -53,7 +53,7 @@ func TestWorker_Stop(t *testing.T) {
 		return nil
 	}
 
-	topic := newTopic("test-worker-stop", handler, WithMaxWorkers(1), WithBufferSize(1))
+	topic := newTopic("test-worker-stop", NewMemoryBroker(1), handler, WithMaxWorkers(1), WithBufferSize(1))
 
 	// 2. Action
 	// Publish a message that the worker will pick up and get stuck on

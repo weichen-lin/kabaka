@@ -30,7 +30,7 @@ type Topic struct {
 
 	workers        []*Worker          // List of Worker instances
 	workerPool     chan chan *Message // Pool of available worker job channels
-	messageQueue   chan *Message      // Central buffer queue for messages
+	broker         Broker             // Broker for message storage
 	maxWorkers     int                // Maximum number of workers
 	bufferSize     int                // Buffer size of the message queue
 	maxRetries     int                // Maximum number of retries after a message processing failure
@@ -61,9 +61,10 @@ type Option func(*Topic)
 // name: The name of the Topic.
 // handler: The function to process messages.
 // options: One or more Option functions to customize the Topic's configuration.
-func newTopic(name string, hadler HandleFunc, options ...Option) *Topic {
+func newTopic(name string, broker Broker, hadler HandleFunc, options ...Option) *Topic {
 	t := &Topic{
 		Name:           name,
+		broker:         broker,
 		bufferSize:     24,
 		maxRetries:     3,
 		maxWorkers:     20,
@@ -82,7 +83,6 @@ func newTopic(name string, hadler HandleFunc, options ...Option) *Topic {
 
 	// Initialize the core channels
 	t.workerPool = make(chan chan *Message, t.maxWorkers)
-	t.messageQueue = make(chan *Message, t.bufferSize)
 
 	// Start the worker pool and dispatcher
 	t.start()
@@ -101,7 +101,6 @@ func WithMaxWorkers(maxWorkers int) Option {
 func WithBufferSize(bufferSize int) Option {
 	return func(t *Topic) {
 		t.bufferSize = bufferSize
-		t.messageQueue = make(chan *Message, bufferSize)
 	}
 }
 
@@ -224,95 +223,84 @@ func (t *Topic) stop() {
 func (t *Topic) dispatch() {
 	defer t.dispatcherWg.Done() // 確保在退出時通知 WaitGroup
 
+	// 使用 context 管理超時和退出
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		<-t.quit
+		cancel()
+	}()
+
 	for {
-		select {
-		case msg := <-t.messageQueue: // 等待新消息
-			var jobChannel chan *Message
-			// 等待一個空閒的 worker
+		msg, err := t.broker.Pop(ctx, t.Name)
+
+		if err != nil {
+			// 如果是 context 取消，則正常退出
 			select {
-			case jobChannel = <-t.workerPool: // 獲取到空閒 worker 的任務 channel
-			case <-t.quit: // 如果收到退出信號，則返回
+			case <-t.quit:
 				return
+			default:
+				// 其他錯誤可能需要記錄或重試
+				time.Sleep(time.Second)
+				continue
 			}
+		}
 
-			// 將消息發送給獲取到的 worker
-			// 使用 recover 防止向已關閉的 channel 發送消息時發生 panic
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// jobChannel 已關閉，將消息放回隊列
-						select {
-						case t.messageQueue <- msg:
-							// 成功放回隊列
-						default:
-							// 隊列已滿，記錄錯誤
-							if t.logger != nil {
-								t.logger.Error(&LogMessage{
-									TopicName:     t.Name,
-									Action:        Publish,
-									MessageID:     msg.ID,
-									Message:       "failed to return message to queue - worker channel closed",
-									MessageStatus: Error,
-									SpendTime:     0,
-									CreatedAt:     time.Now(),
-									Headers:       msg.Headers,
-								})
-							}
-						}
-					}
-				}()
+		var jobChannel chan *Message
+		// 等待一個空閒的 worker
+		select {
+		case jobChannel = <-t.workerPool: // 獲取到空閒 worker 的任務 channel
+		case <-t.quit: // 如果收到退出信號，則嘗試將消息放回 Broker
+			pushCtx, pushCancel := context.WithTimeout(context.Background(), time.Second)
+			t.broker.Push(pushCtx, t.Name, msg)
+			t.broker.Ack(pushCtx, t.Name, msg)
+			pushCancel()
+			return
+		}
 
-				select {
-				case jobChannel <- msg:
-					// 成功發送
-				case <-t.quit: // 如果在發送時收到退出信號，則將消息放回隊列並返回
-					select {
-					case t.messageQueue <- msg:
-						// 成功放回隊列
-					default:
-						// 隊列已滿，記錄錯誤
-						if t.logger != nil {
-							t.logger.Error(&LogMessage{
-								TopicName:     t.Name,
-								Action:        Publish,
-								MessageID:     msg.ID,
-								Message:       "failed to return message to queue during shutdown",
-								MessageStatus: Error,
-								SpendTime:     0,
-								CreatedAt:     time.Now(),
-								Headers:       msg.Headers,
-							})
-						}
-					}
-				}
-			}()
-		case <-t.quit: // 如果在等待消息時收到退出信號，則返回
+		// 將消息發送給獲取到的 worker
+		select {
+		case jobChannel <- msg:
+			// 成功發送
+		case <-t.quit: // 如果在發送時收到退出信號，則將消息放回 Broker
+			pushCtx, pushCancel := context.WithTimeout(context.Background(), time.Second)
+			t.broker.Push(pushCtx, t.Name, msg)
+			t.broker.Ack(pushCtx, t.Name, msg)
+			pushCancel()
 			return
 		}
 	}
 }
 
 // publish 是向 Topic 發布新消息的公共接口。
-// 它會將消息放入 messageQueue，如果隊列已滿，則會等待一小段時間後超時。
+// 它會將消息放入 Broker。
 func (t *Topic) publish(message []byte) error {
 	msg := t.generateTraceMessage(message)
 
-	select {
-	case t.messageQueue <- msg: // 嘗試將消息放入隊列
-		t.logger.Info(&LogMessage{
-			TopicName:     t.Name,
-			Action:        Publish,
-			MessageID:     msg.ID,
-			Message:       string(msg.Value),
-			MessageStatus: Success,
-			SpendTime:     0,
-			CreatedAt:     time.Now(),
-			Headers:       msg.Headers,
-		})
-		return nil
-	case <-time.After(t.publishTimeout): // 如果在 publishTimeout 內無法放入，則返回超時錯誤
-		return ErrPublishTimeout
+	ctx, cancel := context.WithTimeout(context.Background(), t.publishTimeout)
+	defer cancel()
+
+	err := t.broker.Push(ctx, t.Name, msg)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			return ErrPublishTimeout
+		}
+		return err
 	}
+
+	t.logger.Info(&LogMessage{
+		TopicName:     t.Name,
+		Action:        Publish,
+		MessageID:     msg.ID,
+		Message:       string(msg.Value),
+		MessageStatus: Success,
+		SpendTime:     0,
+		CreatedAt:     time.Now(),
+		Headers:       msg.Headers,
+	})
+
+	return nil
 }
 
 // generateTraceMessage 是一個輔助函數，用於創建一個帶有追蹤信息的新 Message。
