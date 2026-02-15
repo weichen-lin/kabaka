@@ -208,6 +208,11 @@ func (w *Worker) handleTimeOut(msg *Message, duration time.Duration) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		_ = w.topic.broker.Push(ctx, w.topic.Name, msg)
+		_ = w.topic.broker.IncRetried(ctx, w.topic.Name)
+		cancel()
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = w.topic.broker.IncFailed(ctx, w.topic.Name)
 		cancel()
 	}
 
@@ -238,6 +243,11 @@ func (w *Worker) handleError(err error, msg *Message, duration time.Duration) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		_ = w.topic.broker.Push(ctx, w.topic.Name, msg)
+		_ = w.topic.broker.IncRetried(ctx, w.topic.Name)
+		cancel()
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = w.topic.broker.IncFailed(ctx, w.topic.Name)
 		cancel()
 	}
 
@@ -265,4 +275,7 @@ func (w *Worker) handleSuccess(msg *Message, duration time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = w.topic.broker.Ack(ctx, w.topic.Name, msg)
+
+	_ = w.topic.broker.IncSuccess(ctx, w.topic.Name)
+	_ = w.topic.broker.RecordDuration(ctx, w.topic.Name, duration)
 }

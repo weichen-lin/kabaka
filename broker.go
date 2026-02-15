@@ -2,6 +2,7 @@ package kabaka
 
 import (
 	"context"
+	"time"
 )
 
 // Broker defines the interface for message storage and retrieval.
@@ -19,6 +20,19 @@ type Broker interface {
 
 	// Len returns the number of messages in the specified topic.
 	Len(ctx context.Context, topic string) (int64, error)
+
+	// IncSuccess increments the success counter for the topic.
+	IncSuccess(ctx context.Context, topic string) error
+	// IncFailed increments the failure counter for the topic.
+	IncFailed(ctx context.Context, topic string) error
+	// IncRetried increments the retry counter for the topic.
+	IncRetried(ctx context.Context, topic string) error
+	// RecordDuration records the processing duration of a task.
+	RecordDuration(ctx context.Context, topic string, d time.Duration) error
+	// GetStats returns the success, failed, retried counts, p95, and p99 for the topic.
+	GetStats(ctx context.Context, topic string) (success, failed, retried int64, p95, p99 float64, err error)
+	// ResetStats resets the metrics for the topic.
+	ResetStats(ctx context.Context, topic string) error
 
 	// Close cleans up broker resources.
 	Close() error
