@@ -157,6 +157,14 @@ func (b *MemoryBroker) Push(ctx context.Context, topic string, msg *Message) err
 	}
 }
 
+func (b *MemoryBroker) PushDelayed(ctx context.Context, topic string, msg *Message, delay time.Duration) error {
+	time.AfterFunc(delay, func() {
+		// Use a background context for the delayed push as the original ctx might be cancelled
+		b.Push(context.Background(), topic, msg)
+	})
+	return nil
+}
+
 func (b *MemoryBroker) Pop(ctx context.Context, topic string) (*Message, error) {
 	ch := b.getQueue(topic)
 

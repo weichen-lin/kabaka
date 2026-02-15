@@ -303,6 +303,35 @@ func (t *Topic) publish(message []byte) error {
 	return nil
 }
 
+// publishDelayed 是向 Topic 發布帶有延遲的新消息的公共接口。
+func (t *Topic) publishDelayed(message []byte, delay time.Duration) error {
+	msg := t.generateTraceMessage(message)
+
+	ctx, cancel := context.WithTimeout(context.Background(), t.publishTimeout)
+	defer cancel()
+
+	err := t.broker.PushDelayed(ctx, t.Name, msg, delay)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			return ErrPublishTimeout
+		}
+		return err
+	}
+
+	t.logger.Info(&LogMessage{
+		TopicName:     t.Name,
+		Action:        Publish,
+		MessageID:     msg.ID,
+		Message:       string(msg.Value) + " (delayed " + delay.String() + ")",
+		MessageStatus: Success,
+		SpendTime:     0,
+		CreatedAt:     time.Now(),
+		Headers:       msg.Headers,
+	})
+
+	return nil
+}
+
 // generateTraceMessage 是一個輔助函數，用於創建一個帶有追蹤信息的新 Message。
 func (t *Topic) generateTraceMessage(message []byte) *Message {
 	headers := make(map[string]string)

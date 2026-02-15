@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Kabaka struct {
@@ -55,6 +56,20 @@ func (k *Kabaka) Publish(name string, message []byte) error {
 	}
 
 	err := topic.publish(message)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (k *Kabaka) PublishDelayed(name string, message []byte, delay time.Duration) error {
+	topic, ok := k.topics[name]
+	if !ok {
+		return ErrTopicNotFound
+	}
+
+	err := topic.publishDelayed(message, delay)
 	if err != nil {
 		return err
 	}

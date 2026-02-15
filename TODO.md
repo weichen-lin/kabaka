@@ -37,6 +37,6 @@
 
 ## 5. 功能擴充 (Features)
 
-### 延遲任務 (Delayed Jobs)
+### 延遲任務 (Delayed Jobs) [Done]
 *   **優化方案**：
     *   利用 Redis 的 `ZSET` 實作延遲隊列，支援 `k.PublishDelayed(topic, data, delay)`。

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +15,10 @@ import (
 type RedisBroker struct {
 	client *redis.Client
 	prefix string
+	ctx    context.Context
+	cancel context.CancelFunc
+	mu     sync.Mutex
+	pollers map[string]bool
 }
 
 const redisMaxSamples = 1000
@@ -36,9 +41,13 @@ func NewRedisBroker(addr string, password string, db int, opts ...RedisBrokerOpt
 		prefix = opts[0].Prefix
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	return &RedisBroker{
-		client: client,
-		prefix: prefix,
+		client:  client,
+		prefix:  prefix,
+		ctx:     ctx,
+		cancel:  cancel,
+		pollers: make(map[string]bool),
 	}
 }
 
@@ -49,11 +58,26 @@ func NewRedisBrokerWithClient(client *redis.Client, opts ...RedisBrokerOptions) 
 		prefix = opts[0].Prefix
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	return &RedisBroker{
-		client: client,
-		prefix: prefix,
+		client:  client,
+		prefix:  prefix,
+		ctx:     ctx,
+		cancel:  cancel,
+		pollers: make(map[string]bool),
 	}
 }
+
+var moveDelayedScript = redis.NewScript(`
+	local val = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 100)
+	if #val > 0 then
+		for i, v in ipairs(val) do
+			redis.call('RPUSH', KEYS[2], v)
+			redis.call('ZREM', KEYS[1], v)
+		end
+	end
+	return #val
+`)
 
 func (b *RedisBroker) Push(ctx context.Context, topic string, msg *Message) error {
 	data, err := json.Marshal(msg)
@@ -62,13 +86,107 @@ func (b *RedisBroker) Push(ctx context.Context, topic string, msg *Message) erro
 	}
 
 	key := b.prefix + topic
+	b.ensurePoller(topic)
 	return b.client.RPush(ctx, key, data).Err()
+}
+
+func (b *RedisBroker) PushDelayed(ctx context.Context, topic string, msg *Message, delay time.Duration) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	key := b.prefix + topic + ":delayed"
+	score := time.Now().Add(delay).UnixMilli()
+
+	b.ensurePoller(topic)
+
+	// Check if this new message will be the new head of the delayed queue
+	head, _ := b.client.ZRangeWithScores(ctx, key, 0, 0).Result()
+	isNewHead := len(head) == 0 || float64(score) < head[0].Score
+
+	err = b.client.ZAdd(ctx, key, redis.Z{
+		Score:  float64(score),
+		Member: data,
+	}).Err()
+
+	if err == nil && isNewHead {
+		// Notify the poller to wake up and re-calculate sleep time
+		notifyKey := b.prefix + topic + ":notify"
+		b.client.Publish(ctx, notifyKey, score)
+	}
+
+	return err
+}
+
+func (b *RedisBroker) ensurePoller(topic string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.pollers[topic] {
+		return
+	}
+
+	b.pollers[topic] = true
+	go b.startPoller(topic)
+}
+
+func (b *RedisBroker) startPoller(topic string) {
+	delayedKey := b.prefix + topic + ":delayed"
+	queueKey := b.prefix + topic
+	notifyKey := b.prefix + topic + ":notify"
+
+	pubsub := b.client.Subscribe(b.ctx, notifyKey)
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+
+	for {
+		// 1. Move expired messages
+		now := time.Now().UnixMilli()
+		_, err := moveDelayedScript.Run(b.ctx, b.client, []string{delayedKey, queueKey}, now).Result()
+		if err != nil && err != context.Canceled {
+			time.Sleep(time.Second) // Error backoff
+			continue
+		}
+
+		// 2. Get the next message's execution time to determine sleep duration
+		res, err := b.client.ZRangeWithScores(b.ctx, delayedKey, 0, 0).Result()
+		
+		var waitTime time.Duration
+		if err == nil && len(res) > 0 {
+			diff := int64(res[0].Score) - time.Now().UnixMilli()
+			if diff > 0 {
+				waitTime = time.Duration(diff) * time.Millisecond
+			} else {
+				waitTime = 0 // Should process immediately
+			}
+		} else {
+			waitTime = 10 * time.Minute // Long sleep if no tasks
+		}
+
+		// 3. Wait for either: next task time, new task notification, or context cancellation
+		if waitTime > 0 {
+			timer := time.NewTimer(waitTime)
+			select {
+			case <-b.ctx.Done():
+				timer.Stop()
+				return
+			case <-ch:
+				// New task added (possibly earlier), wake up to re-check
+				timer.Stop()
+			case <-timer.C:
+				// Time reached
+			}
+		}
+	}
 }
 
 func (b *RedisBroker) Pop(ctx context.Context, topic string) (*Message, error) {
 	key := b.prefix + topic
 	processingKey := key + ":processing"
 
+	b.ensurePoller(topic)
 	// BLMove blocks until a message is available and moves it to the processing queue.
 	// This ensures at-least-once delivery.
 	res, err := b.client.BLMove(ctx, key, processingKey, "RIGHT", "LEFT", 0).Result()
@@ -172,5 +290,6 @@ func (b *RedisBroker) ResetStats(ctx context.Context, topic string) error {
 }
 
 func (b *RedisBroker) Close() error {
+	b.cancel()
 	return b.client.Close()
 }

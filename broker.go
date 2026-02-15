@@ -11,6 +11,9 @@ type Broker interface {
 	// Push adds a message to the specified topic.
 	Push(ctx context.Context, topic string, msg *Message) error
 
+	// PushDelayed adds a message to the specified topic with a delay.
+	PushDelayed(ctx context.Context, topic string, msg *Message, delay time.Duration) error
+
 	// Pop retrieves a message from the specified topic.
 	// It should block until a message is available or the context is cancelled.
 	Pop(ctx context.Context, topic string) (*Message, error)
