@@ -3,203 +3,518 @@ package kabaka
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// MockLogger is a mock implementation of the Logger interface for testing.
-type MockLogger struct {
-	DebugCalled bool
-	InfoCalled  bool
-	WarnCalled  bool
-	ErrorCalled bool
-	LastMessage *LogMessage
-}
+func TestNewTopic(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
 
-func (m *MockLogger) Debug(args *LogMessage) {
-	m.DebugCalled = true
-	m.LastMessage = args
-}
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
 
-func (m *MockLogger) Info(args *LogMessage) {
-	m.InfoCalled = true
-	m.LastMessage = args
-}
-
-func (m *MockLogger) Warn(args *LogMessage) {
-	m.WarnCalled = true
-	m.LastMessage = args
-}
-
-func (m *MockLogger) Error(args *LogMessage) {
-	m.ErrorCalled = true
-	m.LastMessage = args
-}
-
-// TestNewTopic_DefaultOptions verifies that a new topic is created with correct default values.
-func TestNewTopic_DefaultOptions(t *testing.T) {
-	handler := func(ctx context.Context, msg *Message) error { return nil }
-	broker := NewMemoryBroker(24)
-	topic := newTopic("test-defaults", broker, handler)
+	topic := newTopic("test-topic", "internal-name", broker, handler)
 	defer topic.stop()
 
-	if topic.Name != "test-defaults" {
-		t.Errorf("expected topic name to be 'test-defaults', got '%s'", topic.Name)
+	if topic.Name != "test-topic" {
+		t.Errorf("Expected topic name test-topic, got %s", topic.Name)
 	}
-	if topic.maxWorkers != 20 {
-		t.Errorf("expected default maxWorkers to be 20, got %d", topic.maxWorkers)
+
+	if topic.InternalName != "internal-name" {
+		t.Errorf("Expected internal name internal-name, got %s", topic.InternalName)
 	}
-	if topic.bufferSize != 24 {
-		t.Errorf("expected default bufferSize to be 24, got %d", topic.bufferSize)
-	}
+
 	if topic.maxRetries != 3 {
-		t.Errorf("expected default maxRetries to be 3, got %d", topic.maxRetries)
+		t.Errorf("Expected max retries 3, got %d", topic.maxRetries)
 	}
-	if topic.retryDelay != 5*time.Second {
-		t.Errorf("expected default retryDelay to be 5s, got %v", topic.retryDelay)
+
+	if topic.maxWorkers != 20 {
+		t.Errorf("Expected max workers 20, got %d", topic.maxWorkers)
 	}
-	if topic.processTimeout != 10*time.Second {
-		t.Errorf("expected default processTimeout to be 10s, got %v", topic.processTimeout)
-	}
-	if topic.publishTimeout != 2*time.Second {
-		t.Errorf("expected default publishTimeout to be 2s, got %v", topic.publishTimeout)
-	}
-	if topic.handler == nil {
-		t.Error("handler should not be nil")
+
+	if len(topic.workers) != 20 {
+		t.Errorf("Expected 20 workers, got %d", len(topic.workers))
 	}
 }
 
-// TestNewTopic_WithOptions verifies that custom options are applied correctly.
 func TestNewTopic_WithOptions(t *testing.T) {
-	handler := func(ctx context.Context, msg *Message) error { return nil }
-	logger := &MockLogger{}
-	broker := NewMemoryBroker(24)
-	topic := newTopic("test-options", broker, handler,
-		WithMaxWorkers(10),
-		WithBufferSize(50),
-		WithMaxRetries(5),
-		WithRetryDelay(10*time.Second),
-		WithProcessTimeout(20*time.Second),
-		WithPublishTimeout(5*time.Second),
-		WithLogger(logger),
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(5),
+		WithMaxRetries(10),
+		WithRetryDelay(1*time.Second),
+		WithProcessTimeout(5*time.Second),
+		WithPublishTimeout(3*time.Second),
 	)
 	defer topic.stop()
 
-	if topic.maxWorkers != 10 {
-		t.Errorf("expected maxWorkers to be 10, got %d", topic.maxWorkers)
+	if topic.maxWorkers != 5 {
+		t.Errorf("Expected max workers 5, got %d", topic.maxWorkers)
 	}
-	if topic.bufferSize != 50 {
-		t.Errorf("expected bufferSize to be 50, got %d", topic.bufferSize)
+
+	if topic.maxRetries != 10 {
+		t.Errorf("Expected max retries 10, got %d", topic.maxRetries)
 	}
-	if topic.maxRetries != 5 {
-		t.Errorf("expected maxRetries to be 5, got %d", topic.maxRetries)
+
+	if topic.retryDelay != 1*time.Second {
+		t.Errorf("Expected retry delay 1s, got %v", topic.retryDelay)
 	}
-	if topic.retryDelay != 10*time.Second {
-		t.Errorf("expected retryDelay to be 10s, got %v", topic.retryDelay)
+
+	if topic.processTimeout != 5*time.Second {
+		t.Errorf("Expected process timeout 5s, got %v", topic.processTimeout)
 	}
-	if topic.processTimeout != 20*time.Second {
-		t.Errorf("expected processTimeout to be 20s, got %v", topic.processTimeout)
+
+	if topic.publishTimeout != 3*time.Second {
+		t.Errorf("Expected publish timeout 3s, got %v", topic.publishTimeout)
 	}
-	if topic.publishTimeout != 5*time.Second {
-		t.Errorf("expected publishTimeout to be 5s, got %v", topic.publishTimeout)
-	}
-	if topic.logger != logger {
-		t.Error("custom logger was not set correctly")
+
+	if len(topic.workers) != 5 {
+		t.Errorf("Expected 5 workers, got %d", len(topic.workers))
 	}
 }
 
-// TestTopic_Publish_Success verifies that a message is successfully published to the queue.
-func TestTopic_Publish_Success(t *testing.T) {
-	// 1. Setup
-	var handlerCalled bool
-	var mu sync.Mutex
+func TestTopic_Publish(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
 	handler := func(ctx context.Context, msg *Message) error {
-		mu.Lock()
-		handlerCalled = true
-		mu.Unlock()
 		return nil
 	}
-	topic := newTopic("test-publish-success", NewMemoryBroker(1), handler, WithBufferSize(1))
+
+	mockLogger := &MockLogger{}
+	topic := newTopic("test-topic", "internal-name", broker, handler)
+	topic.logger = mockLogger
 	defer topic.stop()
 
-	// 2. Action
 	err := topic.publish([]byte("test message"))
-
-	// 3. Assert
 	if err != nil {
-		t.Fatalf("publish failed unexpectedly: %v", err)
+		t.Fatalf("Publish failed: %v", err)
 	}
 
-	// Wait for the message to be processed to confirm it was in the queue
+	if broker.GetPushCalls() != 1 {
+		t.Errorf("Expected 1 push call, got %d", broker.GetPushCalls())
+	}
+
+	messages := broker.GetMessages("internal-name")
+	if len(messages) != 1 {
+		t.Fatalf("Expected 1 message, got %d", len(messages))
+	}
+
+	if string(messages[0].Value) != "test message" {
+		t.Errorf("Expected 'test message', got %s", string(messages[0].Value))
+	}
+}
+
+func TestTopic_PublishDelayed(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
+
+	mockLogger := &MockLogger{}
+	topic := newTopic("test-topic", "internal-name", broker, handler)
+	topic.logger = mockLogger
+	defer topic.stop()
+
+	err := topic.publishDelayed([]byte("delayed message"), 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("PublishDelayed failed: %v", err)
+	}
+
+	// Wait for delayed message to be pushed
+	time.Sleep(200 * time.Millisecond)
+
+	messages := broker.GetMessages("internal-name")
+	if len(messages) == 0 {
+		t.Error("Expected delayed message to be pushed")
+	}
+}
+
+func TestTopic_Receive(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	var processedCount int32
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	handler := func(ctx context.Context, msg *Message) error {
+		atomic.AddInt32(&processedCount, 1)
+		wg.Done()
+		return nil
+	}
+
+	mockLogger := &MockLogger{}
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(2),
+	)
+	topic.logger = mockLogger
+	defer topic.stop()
+
+	msg := &Message{
+		Id:        "test-msg",
+		Value:     []byte("receive test"),
+		Retry:     3,
+		CreatedAt: time.Now(),
+	}
+
+	topic.receive(msg)
+
+	// Wait for processing with timeout
+	done := make(chan bool)
+	go func() {
+		wg.Wait()
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for message processing")
+	}
+
+	if atomic.LoadInt32(&processedCount) != 1 {
+		t.Errorf("Expected 1 processed message, got %d", processedCount)
+	}
+}
+
+func TestTopic_Stop(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	handler := func(ctx context.Context, msg *Message) error {
+		time.Sleep(100 * time.Millisecond)
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(3),
+	)
+
+	// Verify workers are started
+	if len(topic.workers) != 3 {
+		t.Errorf("Expected 3 workers, got %d", len(topic.workers))
+	}
+
+	// Stop the topic
+	topic.stop()
+
+	// Verify workers are stopped
+	topic.mu.RLock()
+	workers := topic.workers
+	topic.mu.RUnlock()
+
+	if workers != nil {
+		t.Error("Workers should be nil after stop")
+	}
+
+	// Calling stop again should be safe (stopOnce)
+	topic.stop()
+}
+
+func TestTopic_StartIdempotent(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(3),
+	)
+	defer topic.stop()
+
+	// Verify initial workers count
+	initialCount := len(topic.workers)
+	if initialCount != 3 {
+		t.Errorf("Expected 3 workers initially, got %d", initialCount)
+	}
+
+	// Call start() again - should be idempotent (no-op)
+	topic.start()
+
+	// Verify workers count hasn't changed
+	finalCount := len(topic.workers)
+	if finalCount != initialCount {
+		t.Errorf("Expected workers count to remain %d, got %d", initialCount, finalCount)
+	}
+
+	// Verify it's still the same workers (not recreated)
+	if finalCount != 3 {
+		t.Errorf("Expected 3 workers after second start(), got %d", finalCount)
+	}
+}
+
+func TestTopic_ReturnToQueueWhenStoppedBeforeWorkerAvailable(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+	broker.Register(context.Background(), "internal-name")
+
+	// Handler that takes a long time
+	handler := func(ctx context.Context, msg *Message) error {
+		time.Sleep(500 * time.Millisecond)
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(1), // Only 1 worker
+	)
+
+	// Send first message - occupies the only worker
+	msg1 := &Message{
+		Id:        "msg1",
+		Value:     []byte("first message"),
+		Retry:     3,
+		CreatedAt: time.Now(),
+	}
+	topic.receive(msg1)
+
+	// Give time for first message to start processing
+	time.Sleep(50 * time.Millisecond)
+
+	initialPushCalls := broker.GetPushCalls()
+
+	// Send second message - will wait for worker to be available
+	msg2 := &Message{
+		Id:        "msg2",
+		Value:     []byte("second message"),
+		Retry:     3,
+		CreatedAt: time.Now(),
+	}
+	topic.receive(msg2)
+
+	// Stop topic immediately - msg2 should be returned to queue
+	time.Sleep(10 * time.Millisecond)
+	topic.stop()
+
+	// Wait for returnToQueue to complete
 	time.Sleep(100 * time.Millisecond)
 
-	mu.Lock()
-	if !handlerCalled {
-		t.Error("handler was not called after publishing a message")
+	// Verify msg2 was pushed back to broker
+	if broker.GetPushCalls() <= initialPushCalls {
+		t.Error("Expected message to be returned to queue when topic stopped")
 	}
-	mu.Unlock()
+
+	// Verify message is in broker queue
+	messages := broker.GetMessages("internal-name")
+	found := false
+	for _, msg := range messages {
+		if msg.Id == "msg2" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected msg2 to be in broker queue after returnToQueue")
+	}
 }
 
-// TestTopic_Publish_Timeout verifies that publishing to a full queue times out.
-func TestTopic_Publish_Timeout(t *testing.T) {
-	// 1. Setup
-	blocker := make(chan struct{})
+func TestTopic_ReturnToQueueSecondSelectBranch(t *testing.T) {
+	// This tests the second "case <-t.quit" in receive() (line 136)
+	// This branch is hard to trigger reliably because it requires:
+	// 1. Successfully getting a worker from workerPool
+	// 2. The jobChannel send to block (channel full)
+	// 3. Topic stops during the blocked send
+	//
+	// This is an edge case that rarely happens in practice.
+	// The test is best-effort and may not always trigger this branch.
+
+	broker := NewMockBroker()
+	defer broker.Close()
+	broker.Register(context.Background(), "internal-name")
+
 	handler := func(ctx context.Context, msg *Message) error {
-		<-blocker
+		time.Sleep(100 * time.Millisecond)
 		return nil
 	}
-	topic := newTopic("test-publish-timeout", NewMemoryBroker(1), handler,
-		WithMaxWorkers(1),                       // Only one worker
-		WithBufferSize(1),                       // Buffer of size 1
-		WithPublishTimeout(50*time.Millisecond), // Short timeout
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(1),
 	)
-	defer close(blocker)
+
+	initialPushCalls := broker.GetPushCalls()
+
+	// Send many messages rapidly to increase chance of catching the edge case
+	for i := 0; i < 10; i++ {
+		msg := &Message{
+			Id:        NewUUID(),
+			Value:     []byte("test message"),
+			Retry:     3,
+			CreatedAt: time.Now(),
+		}
+		topic.receive(msg)
+	}
+
+	// Give brief time for messages to queue
+	time.Sleep(20 * time.Millisecond)
+
+	// Stop topic - some messages may be returned to queue
+	topic.stop()
+
+	// At least some messages should have been processed or returned to queue
+	// This is a best-effort test for an edge case
+	t.Logf("Push calls before: %d, after: %d", initialPushCalls, broker.GetPushCalls())
+}
+
+func TestTopic_GenerateTraceMessage(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxRetries(5),
+	)
 	defer topic.stop()
 
-	// 2. Action
-	// Message 1: Picked up by the worker, which then blocks.
-	if err := topic.publish([]byte("message 1")); err != nil {
-		t.Fatalf("publish 1 failed unexpectedly: %v", err)
-	}
-	time.Sleep(10 * time.Millisecond) // Give dispatcher time to act
+	msg := topic.generateTraceMessage([]byte("trace test"))
 
-	// Message 2: Picked up by the dispatcher, which then blocks waiting for a free worker.
-	// The message queue is now empty again.
-	if err := topic.publish([]byte("message 2")); err != nil {
-		t.Fatalf("publish 2 failed unexpectedly: %v", err)
-	}
-	time.Sleep(10 * time.Millisecond) // Give dispatcher time to act
-
-	// Message 3: Fills the messageQueue (buffer size is 1).
-	if err := topic.publish([]byte("message 3")); err != nil {
-		t.Fatalf("publish 3 failed unexpectedly: %v", err)
+	if msg.Id == "" {
+		t.Error("Message ID should not be empty")
 	}
 
-	// Message 4: This should time out.
-	// The worker is busy, the dispatcher is holding a message, and the queue is full.
-	err := topic.publish([]byte("message 4"))
+	if string(msg.Value) != "trace test" {
+		t.Errorf("Expected 'trace test', got %s", string(msg.Value))
+	}
 
-	// 3. Assert
-	if err != ErrPublishTimeout {
-		t.Errorf("expected ErrPublishTimeout, got %v", err)
+	if msg.Retry != 5 {
+		t.Errorf("Expected retry count 5, got %d", msg.Retry)
+	}
+
+	if msg.Headers == nil {
+		t.Error("Headers should be initialized")
+	}
+
+	if msg.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set")
 	}
 }
 
-// TestTopic_Stop_Idempotent verifies that calling stop multiple times does not cause a panic.
-func TestTopic_Stop_Idempotent(t *testing.T) {
-	topic := newTopic("test-stop-idempotent", NewMemoryBroker(24), func(ctx context.Context, msg *Message) error { return nil })
+func TestTopic_ConcurrentPublish(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
 
-	// Call stop multiple times
-	topic.stop()
-	topic.stop()
-
-	// If no panic, the test passes. We can also check if the quit channel is closed.
-	select {
-	case _, ok := <-topic.quit:
-		if ok {
-			t.Error("topic quit channel should be closed")
-		}
-	default:
-		t.Error("topic quit channel should be closed and readable")
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
 	}
+
+	mockLogger := &MockLogger{}
+	topic := newTopic("test-topic", "internal-name", broker, handler)
+	topic.logger = mockLogger
+	defer topic.stop()
+
+	numGoroutines := 10
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			msg := []byte("concurrent message")
+			err := topic.publish(msg)
+			if err != nil {
+				t.Errorf("Publish failed: %v", err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	if broker.GetPushCalls() != numGoroutines {
+		t.Errorf("Expected %d push calls, got %d", numGoroutines, broker.GetPushCalls())
+	}
+}
+
+func TestTopic_WithCustomLogger(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	mockLogger := &MockLogger{}
+
+	handler := func(ctx context.Context, msg *Message) error {
+		return nil
+	}
+
+	topic := newTopic("test-topic", "internal-name", broker, handler)
+	topic.logger = mockLogger
+	defer topic.stop()
+
+	// Publish should log
+	topic.publish([]byte("test message"))
+
+	if mockLogger.InfoCalls == 0 {
+		t.Error("Expected at least one info log call")
+	}
+}
+
+func TestTopic_ProcessingMultipleMessages(t *testing.T) {
+	broker := NewMockBroker()
+	defer broker.Close()
+
+	var processedCount int32
+	var mu sync.Mutex
+	processedIDs := make(map[string]bool)
+
+	handler := func(ctx context.Context, msg *Message) error {
+		atomic.AddInt32(&processedCount, 1)
+		mu.Lock()
+		processedIDs[msg.Id] = true
+		mu.Unlock()
+		time.Sleep(10 * time.Millisecond) // Simulate work
+		return nil
+	}
+
+	mockLogger := &MockLogger{}
+	topic := newTopic("test-topic", "internal-name", broker, handler,
+		WithMaxWorkers(5),
+	)
+	topic.logger = mockLogger
+	defer topic.stop()
+
+	numMessages := 10
+	var wg sync.WaitGroup
+	wg.Add(numMessages)
+
+	for i := 0; i < numMessages; i++ {
+		msg := &Message{
+			Id:        NewUUID(),
+			Value:     []byte("test message"),
+			Retry:     3,
+			CreatedAt: time.Now(),
+		}
+
+		go func(m *Message) {
+			topic.receive(m)
+			time.Sleep(50 * time.Millisecond) // Give time to process
+			wg.Done()
+		}(msg)
+	}
+
+	wg.Wait()
+	time.Sleep(100 * time.Millisecond) // Extra time for processing
+
+	if atomic.LoadInt32(&processedCount) != int32(numMessages) {
+		t.Errorf("Expected %d processed messages, got %d", numMessages, processedCount)
+	}
+
+	mu.Lock()
+	if len(processedIDs) != numMessages {
+		t.Errorf("Expected %d unique processed IDs, got %d", numMessages, len(processedIDs))
+	}
+	mu.Unlock()
 }

@@ -2,8 +2,9 @@ package kabaka
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -11,14 +12,20 @@ type Kabaka struct {
 	mu     sync.RWMutex
 	topics map[string]*Topic
 	broker Broker
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 type KabakaOption func(*Kabaka)
 
 func NewKabaka(options ...KabakaOption) *Kabaka {
+	ctx, cancel := context.WithCancel(context.Background())
 	k := &Kabaka{
 		topics: make(map[string]*Topic),
-		broker: NewMemoryBroker(24), // Default memory broker
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
 	for _, opt := range options {
@@ -28,29 +35,87 @@ func NewKabaka(options ...KabakaOption) *Kabaka {
 	return k
 }
 
+func (k *Kabaka) Start() {
+	k.wg.Add(1)
+	go k.dispatch()
+}
+
+func (k *Kabaka) dispatch() {
+	defer k.wg.Done()
+
+	k.mu.RLock()
+	var internalNames []string
+	for name := range k.topics {
+		internalNames = append(internalNames, name)
+	}
+	k.mu.RUnlock()
+
+	if len(internalNames) == 0 {
+		return // Or handle dynamic topic registration later
+	}
+
+	taskCh, err := k.broker.Watch(k.ctx, internalNames...)
+	if err != nil {
+		return
+	}
+
+	for {
+		select {
+		case <-k.ctx.Done():
+			return
+		case task, ok := <-taskCh:
+			if !ok {
+				return
+			}
+			k.mu.RLock()
+			topic, ok := k.topics[task.Topic]
+			k.mu.RUnlock()
+
+			if ok {
+				topic.receive(task.Message)
+			}
+		}
+	}
+}
+
 func WithBroker(broker Broker) KabakaOption {
 	return func(k *Kabaka) {
 		k.broker = broker
 	}
 }
 
+func (k *Kabaka) generateInternalName(name string) string {
+	h := sha1.New()
+	h.Write([]byte(name))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func (k *Kabaka) CreateTopic(name string, handler HandleFunc, options ...Option) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
-	if _, ok := k.topics[name]; ok {
+	internalName := k.generateInternalName(name)
+
+	if _, ok := k.topics[internalName]; ok {
 		return ErrTopicAlreadyCreated
 	}
 
-	topic := newTopic(name, k.broker, handler, options...)
+	// Explicitly register the topic in the broker
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := k.broker.Register(ctx, internalName); err != nil {
+		return err
+	}
 
-	k.topics[name] = topic
+	topic := newTopic(name, internalName, k.broker, handler, options...)
+	k.topics[internalName] = topic
 
 	return nil
 }
 
 func (k *Kabaka) Publish(name string, message []byte) error {
-	topic, ok := k.topics[name]
+	internalName := k.generateInternalName(name)
+	topic, ok := k.topics[internalName]
 	if !ok {
 		return ErrTopicNotFound
 	}
@@ -81,18 +146,27 @@ func (k *Kabaka) CloseTopic(name string) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
-	topic, ok := k.topics[name]
+	internalName := k.generateInternalName(name)
+	topic, ok := k.topics[internalName]
 	if !ok {
 		return ErrTopicNotFound
 	}
 
 	topic.stop()
 
-	delete(k.topics, name)
+	// Unregister from broker to clean up resources
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = k.broker.Unregister(ctx, topic.InternalName)
+
+	delete(k.topics, internalName)
 	return nil
 }
 
 func (k *Kabaka) Close() error {
+	k.cancel()
+	k.wg.Wait()
+
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
@@ -107,54 +181,15 @@ func (k *Kabaka) Close() error {
 	return nil
 }
 
-type Metric struct {
-	TopicName     string
-	ActiveWorkers int32
-	BusyWorkers   int32
-	OnGoingJobs   int32
-	PendingJobs   int64
-	TotalSuccess  int64
-	TotalFailed   int64
-	TotalRetried  int64
-	P95           float64
-	P99           float64
-}
-
-func (k *Kabaka) GetMetrics() []*Metric {
+func (k *Kabaka) GetTopicSchema(name string) (string, error) {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
-	metrics := make([]*Metric, 0)
-
-	for _, topic := range k.topics {
-		ctx := context.Background()
-		pending, _ := k.broker.Len(ctx, topic.Name)
-		success, failed, retried, p95, p99, _ := k.broker.GetStats(ctx, topic.Name)
-
-		metrics = append(metrics, &Metric{
-			TopicName:     topic.Name,
-			ActiveWorkers: atomic.LoadInt32(&topic.activeWorkers),
-			BusyWorkers:   atomic.LoadInt32(&topic.busyWorkers),
-			OnGoingJobs:   atomic.LoadInt32(&topic.onGoingJobs),
-			PendingJobs:   pending,
-			TotalSuccess:  success,
-			TotalFailed:   failed,
-			TotalRetried:  retried,
-			P95:           p95,
-			P99:           p99,
-		})
+	internalName := k.generateInternalName(name)
+	topic, ok := k.topics[internalName]
+	if !ok {
+		return "", ErrTopicNotFound
 	}
 
-	return metrics
-}
-
-func (k *Kabaka) ResetMetrics(name string) error {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-
-	if _, ok := k.topics[name]; !ok {
-		return ErrTopicNotFound
-	}
-
-	return k.broker.ResetStats(context.Background(), name)
+	return topic.schema, nil
 }

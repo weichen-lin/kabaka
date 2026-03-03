@@ -3,414 +3,195 @@ package kabaka
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 // HandleFunc is a user-defined message processing function type.
-//
-// Parameters:
-//   - ctx: A context with timeout control. Users should check this context
-//     during long-running operations to respond to timeout or cancellation signals.
-//     The timeout duration is controlled by the Topic's processTimeout configuration.
-//   - msg: The message object to be processed.
-//
-// Returns:
-//   - error: Returns nil if processing is successful, or an error if it fails.
-//     Returning an error will trigger the retry mechanism (if configured).
-//
-// Best Practices:
-//  1. Pass the ctx to all downstream calls that support context (e.g., HTTP requests, database queries).
-//  2. Periodically check ctx.Done() in long-running loops.
-//  3. When ctx.Done() is triggered, you should return ctx.Err() as soon as possible.
 type HandleFunc func(ctx context.Context, msg *Message) error
 
 type Topic struct {
-	Name string // Topic name
+	Name         string
+	InternalName string
 
-	workers        []*Worker          // List of Worker instances
-	workerPool     chan chan *Message // Pool of available worker job channels
-	broker         Broker             // Broker for message storage
-	maxWorkers     int                // Maximum number of workers
-	bufferSize     int                // Buffer size of the message queue
-	maxRetries     int                // Maximum number of retries after a message processing failure
-	retryDelay     time.Duration      // Delay time before a retry
-	processTimeout time.Duration      // Processing timeout for each message
-	publishTimeout time.Duration      // Publish timeout for each message
+	instanceID     string
+	workers        []*Worker
+	workerPool     chan chan *Message
+	broker         Broker
+	maxWorkers     int
+	maxRetries     int
+	retryDelay     time.Duration
+	processTimeout time.Duration
+	publishTimeout time.Duration
 
-	handler HandleFunc // Registered user-defined message processing function
-	quit    chan bool  // Channel to notify all goroutines to stop
+	handler HandleFunc
+	quit    chan bool
 
-	logger Logger // Logger interface
+	logger Logger
+	schema string
 
-	// --- metrics ---
-	activeWorkers int32 // Number of currently idle (waiting for tasks) workers
-	busyWorkers   int32 // Number of workers currently processing tasks
-	onGoingJobs   int32 // Total number of tasks being processed
-
-	mu           sync.RWMutex   // RWMutex to protect shared resources like the workers slice
-	dispatcherWg sync.WaitGroup // Used to wait for the dispatcher goroutine to exit safely
-	stopOnce     sync.Once      // Ensures the stop logic is executed only once
+	mu       sync.RWMutex
+	stopOnce sync.Once
 }
 
-// Option is a function type for configuring a Topic, following the functional options pattern.
 type Option func(*Topic)
 
-// newTopic creates and returns a new Topic instance.
-// It initializes based on the provided options and starts the internal dispatcher and workers.
-// name: The name of the Topic.
-// handler: The function to process messages.
-// options: One or more Option functions to customize the Topic's configuration.
-func newTopic(name string, broker Broker, hadler HandleFunc, options ...Option) *Topic {
+func newTopic(name string, internalName string, broker Broker, handler HandleFunc, options ...Option) *Topic {
 	t := &Topic{
 		Name:           name,
+		InternalName:   internalName,
+		instanceID:     NewUUID(),
 		broker:         broker,
-		bufferSize:     24,
 		maxRetries:     3,
 		maxWorkers:     20,
 		retryDelay:     5 * time.Second,
 		processTimeout: 10 * time.Second,
 		publishTimeout: 2 * time.Second,
 		logger:         &DefaultLogger{},
-		handler:        hadler,
+		handler:        handler,
 		quit:           make(chan bool),
 	}
 
-	// Apply all incoming configuration options
 	for _, opt := range options {
 		opt(t)
 	}
 
-	// Initialize the core channels
 	t.workerPool = make(chan chan *Message, t.maxWorkers)
-
-	// Start the worker pool and dispatcher
 	t.start()
 
 	return t
 }
 
-// WithMaxWorkers is an Option function that sets the maximum number of workers for the Topic.
 func WithMaxWorkers(maxWorkers int) Option {
-	return func(t *Topic) {
-		t.maxWorkers = maxWorkers
-	}
+	return func(t *Topic) { t.maxWorkers = maxWorkers }
 }
 
-// WithBufferSize is an Option function that sets the buffer size of the message queue.
-func WithBufferSize(bufferSize int) Option {
-	return func(t *Topic) {
-		t.bufferSize = bufferSize
-	}
-}
-
-// WithRetryDelay is an Option function that sets the delay time for message retries.
 func WithRetryDelay(retryDelay time.Duration) Option {
-	return func(t *Topic) {
-		t.retryDelay = retryDelay
-	}
+	return func(t *Topic) { t.retryDelay = retryDelay }
 }
 
-// WithProcessTimeout is an Option function that sets the processing timeout for messages.
 func WithProcessTimeout(processTimeout time.Duration) Option {
-	return func(t *Topic) {
-		t.processTimeout = processTimeout
-	}
+	return func(t *Topic) { t.processTimeout = processTimeout }
 }
 
-// WithPublishTimeout is an Option function that sets the publish timeout for messages.
 func WithPublishTimeout(publishTimeout time.Duration) Option {
-	return func(t *Topic) {
-		t.publishTimeout = publishTimeout
-	}
+	return func(t *Topic) { t.publishTimeout = publishTimeout }
 }
 
-// WithMaxRetries is an Option function that sets the maximum number of retries after a message processing failure.
 func WithMaxRetries(maxRetries int) Option {
-	return func(t *Topic) {
-		t.maxRetries = maxRetries
-	}
+	return func(t *Topic) { t.maxRetries = maxRetries }
 }
 
-// WithLogger is an Option function that sets a custom logger.
-func WithLogger(logger Logger) Option {
-	return func(t *Topic) {
-		t.logger = logger
-	}
-}
-
-// start is responsible for initializing and starting all background goroutines for the Topic.
-// This includes creating and starting all Workers, as well as starting the core dispatcher.
-// This method is not thread-safe and should be called within newTopic or while holding a lock.
 func (t *Topic) start() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// If workers are already initialized, no need to initialize again
 	if t.workers != nil {
 		return
 	}
 
 	t.workers = make([]*Worker, 0, t.maxWorkers)
 	for i := 0; i < t.maxWorkers; i++ {
-
 		worker := NewWorker(t)
-
 		t.workers = append(t.workers, worker)
-
-		jobCh := worker.start()
-
-		if jobCh == nil {
-			t.logger.Error(
-				&LogMessage{
-					TopicName:     t.Name,
-					Action:        WorkerStart,
-					MessageID:     NewUUID(),
-					Message:       "worker start failed",
-					MessageStatus: WorkerStartFailed,
-					SpendTime:     0,
-					CreatedAt:     time.Now(),
-					Headers:       nil,
-				},
-			)
-			continue
-		}
-		// Remove duplicate logic: worker.start() already adds itself to the workerPool and calls workerJoin()
+		worker.start()
 	}
-
-	// Register and start the dispatcher goroutine
-	t.dispatcherWg.Add(1)
-	go t.dispatch()
 }
 
-// stop gracefully shuts down the Topic.
-// It stops accepting new tasks, waits for existing tasks to complete, and closes all background goroutines.
-// It uses sync.Once to ensure the shutdown logic is executed only once.
 func (t *Topic) stop() {
 	t.stopOnce.Do(func() {
-		// 1. Close the quit channel to notify the topic to stop accepting new messages and not dispatching tasks to workers
 		close(t.quit)
 
-		// 2. Wait for the dispatcher goroutine to exit completely
-		t.dispatcherWg.Wait()
-
-		// 3. Stop all workers and wait for them to finish
 		t.mu.RLock()
 		workers := make([]*Worker, len(t.workers))
-		copy(workers, t.workers) // Copy the slice to avoid concurrent modification during iteration
+		copy(workers, t.workers)
 		t.mu.RUnlock()
 
 		var wg sync.WaitGroup
 		wg.Add(len(workers))
 		for _, worker := range workers {
-			if worker != nil {
-				go func(w *Worker) {
-					defer wg.Done()
-					w.stop()
-				}(worker)
-			} else {
-				wg.Done()
-			}
+			go func(w *Worker) {
+				defer wg.Done()
+				w.stop()
+			}(worker)
 		}
-		wg.Wait() // Wait for all worker goroutines to stop
+		wg.Wait()
 
-		// 4. Clean up resources
 		t.mu.Lock()
 		t.workers = nil
 		t.mu.Unlock()
 	})
 }
 
-func (t *Topic) dispatch() {
-	defer t.dispatcherWg.Done() // 確保在退出時通知 WaitGroup
-
-	// 使用 context 管理超時和退出
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func (t *Topic) receive(msg *Message) {
 	go func() {
-		<-t.quit
-		cancel()
-	}()
-
-	for {
-		msg, err := t.broker.Pop(ctx, t.Name)
-
-		if err != nil {
-			// 如果是 context 取消，則正常退出
-			select {
-			case <-t.quit:
-				return
-			default:
-				// 其他錯誤可能需要記錄或重試
-				time.Sleep(time.Second)
-				continue
-			}
-		}
-
 		var jobChannel chan *Message
-		// 等待一個空閒的 worker
 		select {
-		case jobChannel = <-t.workerPool: // 獲取到空閒 worker 的任務 channel
-		case <-t.quit: // 如果收到退出信號，則嘗試將消息放回 Broker
-			pushCtx, pushCancel := context.WithTimeout(context.Background(), time.Second)
-			t.broker.Push(pushCtx, t.Name, msg)
-			t.broker.Ack(pushCtx, t.Name, msg)
-			pushCancel()
+		case jobChannel = <-t.workerPool:
+		case <-t.quit:
+			t.returnToQueue(msg)
 			return
 		}
 
-		// 將消息發送給獲取到的 worker
 		select {
 		case jobChannel <- msg:
-			// 成功發送
-		case <-t.quit: // 如果在發送時收到退出信號，則將消息放回 Broker
-			pushCtx, pushCancel := context.WithTimeout(context.Background(), time.Second)
-			t.broker.Push(pushCtx, t.Name, msg)
-			t.broker.Ack(pushCtx, t.Name, msg)
-			pushCancel()
+		case <-t.quit:
+			t.returnToQueue(msg)
 			return
 		}
+	}()
+}
+
+func (t *Topic) returnToQueue(msg *Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := t.broker.Push(ctx, t.InternalName, msg); err == nil {
+		_ = t.broker.Finish(ctx, t.InternalName, msg, nil, 0)
 	}
 }
 
-// publish 是向 Topic 發布新消息的公共接口。
-// 它會將消息放入 Broker。
 func (t *Topic) publish(message []byte) error {
 	msg := t.generateTraceMessage(message)
-
 	ctx, cancel := context.WithTimeout(context.Background(), t.publishTimeout)
 	defer cancel()
 
-	err := t.broker.Push(ctx, t.Name, msg)
-	if err != nil {
-		if err == context.DeadlineExceeded {
-			return ErrPublishTimeout
-		}
+	if err := t.broker.Push(ctx, t.InternalName, msg); err != nil {
 		return err
 	}
 
 	t.logger.Info(&LogMessage{
-		TopicName:     t.Name,
-		Action:        Publish,
-		MessageID:     msg.ID,
-		Message:       string(msg.Value),
-		MessageStatus: Success,
-		SpendTime:     0,
-		CreatedAt:     time.Now(),
-		Headers:       msg.Headers,
+		TopicName: t.Name,
+		Action:    Publish,
+		MessageID: msg.Id,
+		Message:   string(message),
+		CreatedAt: time.Now(),
 	})
-
 	return nil
 }
 
-// publishDelayed 是向 Topic 發布帶有延遲的新消息的公共接口。
 func (t *Topic) publishDelayed(message []byte, delay time.Duration) error {
 	msg := t.generateTraceMessage(message)
-
 	ctx, cancel := context.WithTimeout(context.Background(), t.publishTimeout)
 	defer cancel()
 
-	err := t.broker.PushDelayed(ctx, t.Name, msg, delay)
-	if err != nil {
-		if err == context.DeadlineExceeded {
-			return ErrPublishTimeout
-		}
+	if err := t.broker.PushDelayed(ctx, t.InternalName, msg, delay); err != nil {
 		return err
 	}
 
 	t.logger.Info(&LogMessage{
-		TopicName:     t.Name,
-		Action:        Publish,
-		MessageID:     msg.ID,
-		Message:       string(msg.Value) + " (delayed " + delay.String() + ")",
-		MessageStatus: Success,
-		SpendTime:     0,
-		CreatedAt:     time.Now(),
-		Headers:       msg.Headers,
+		TopicName: t.Name,
+		Action:    Publish,
+		MessageID: msg.Id,
+		Message:   string(message) + " (delayed)",
+		CreatedAt: time.Now(),
 	})
-
 	return nil
 }
 
-// generateTraceMessage 是一個輔助函數，用於創建一個帶有追蹤信息的新 Message。
 func (t *Topic) generateTraceMessage(message []byte) *Message {
-	headers := make(map[string]string)
-
-	msg := &Message{
-		ID:        NewUUID(),
+	return &Message{
+		Id:        NewUUID(),
 		Value:     message,
 		Retry:     t.maxRetries,
 		CreatedAt: time.Now(),
-		Headers:   headers,
-	}
-
-	return msg
-}
-
-// workerJoin 以原子方式增加 activeWorkers 計數器。
-// 當一個新的 worker 啟動並加入池時調用。
-func (t *Topic) workerJoin() {
-	atomic.AddInt32(&t.activeWorkers, 1)
-}
-
-// workerLeave 以原子方式減少 activeWorkers 計數器。
-// 當一個 worker 停止時調用。
-func (t *Topic) workerLeave() {
-	atomic.AddInt32(&t.activeWorkers, -1)
-}
-
-// workerStartWork 以原子方式更新計數器，表示一個 worker 開始處理任務。
-// activeWorkers 減一，busyWorkers 加一。
-func (t *Topic) workerStartWork() {
-	atomic.AddInt32(&t.activeWorkers, -1)
-	atomic.AddInt32(&t.busyWorkers, 1)
-}
-
-// workerFinishWork 以原子方式更新計數器，表示一個 worker 完成了任務。
-// activeWorkers 加一，busyWorkers 減一。
-func (t *Topic) workerFinishWork() {
-	atomic.AddInt32(&t.activeWorkers, 1)
-	atomic.AddInt32(&t.busyWorkers, -1)
-}
-
-// jobInWorkerStart 以原子方式增加 onGoingJobs 計數器。
-// 當一個 worker 內的具體任務處理邏輯開始時調用。
-func (t *Topic) jobInWorkerStart() {
-	atomic.AddInt32(&t.onGoingJobs, 1)
-}
-
-// jobInWorkerFinish 以原子方式減少 onGoingJobs 計數器。
-// 當一個 worker 內的具體任務處理邏輯完成時調用。
-func (t *Topic) jobInWorkerFinish() {
-	atomic.AddInt32(&t.onGoingJobs, -1)
-}
-
-// GetActiveWorkers 以原子方式獲取當前空閒的 Worker 數量。
-func (t *Topic) GetActiveWorkers() int32 {
-	return atomic.LoadInt32(&t.activeWorkers)
-}
-
-// GetBusyWorkers 以原子方式獲取當前正在工作的 Worker 數量。
-func (t *Topic) GetBusyWorkers() int32 {
-	return atomic.LoadInt32(&t.busyWorkers)
-}
-
-// GetOnGoingJobs 以原子方式獲取當前正在處理的任務總數。
-func (t *Topic) GetOnGoingJobs() int32 {
-	return atomic.LoadInt32(&t.onGoingJobs)
-}
-
-// workerStop 從 workers 列表中移除指定的 worker。
-// 注意：這個函數目前在 stop 流程中沒有被直接使用，
-// 它可能用於未來更動態的 worker 管理。
-func (t *Topic) workerStop(id string) {
-	for i, worker := range t.workers {
-		if worker.id == id {
-			// 從 slice 中移除 worker
-			t.workers = append(t.workers[:i], t.workers[i+1:]...)
-			// 更新 active workers 計數
-			atomic.AddInt32(&t.activeWorkers, -1)
-			break
-		}
+		Headers:   make(map[string]string),
 	}
 }

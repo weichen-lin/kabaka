@@ -5,7 +5,7 @@ import (
 )
 
 type Message struct {
-	ID        string
+	Id        string
 	Value     []byte
 	Retry     int
 	CreatedAt time.Time
@@ -13,25 +13,23 @@ type Message struct {
 }
 
 func (m *Message) Get(key string) string {
-	for mapkey, value := range m.Headers {
-		if key == mapkey {
-			return value
-		}
+	if m.Headers == nil {
+		return ""
 	}
-
-	return ""
+	return m.Headers[key]
 }
 
 func (m *Message) Set(key string, value string) {
+	if m.Headers == nil {
+		m.Headers = make(map[string]string)
+	}
 	m.Headers[key] = value
 }
 
 func (m *Message) Keys() []string {
 	var keys []string
-
 	for key := range m.Headers {
-		keys = append(keys, m.Headers[key])
+		keys = append(keys, key)
 	}
-
 	return keys
 }
