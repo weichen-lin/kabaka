@@ -75,15 +75,27 @@ func NewRedisBrokerWithClient(client *redis.Client, opts ...RedisBrokerOptions) 
 	}
 }
 
+var pushScript = redis.NewScript(`
+	redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+	redis.call('RPUSH', KEYS[2], ARGV[1])
+	return 1
+`)
+
+var pushDelayedScript = redis.NewScript(`
+	redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+	redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
+	return 1
+`)
+
 var moveDelayedScript = redis.NewScript(`
-	local val = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 100)
-	if #val > 0 then
-		for i, v in ipairs(val) do
-			redis.call('RPUSH', KEYS[2], v)
-			redis.call('ZREM', KEYS[1], v)
+	local ids = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, 100)
+	if #ids > 0 then
+		for i, id in ipairs(ids) do
+			redis.call('RPUSH', KEYS[2], id)
+			redis.call('ZREM', KEYS[1], id)
 		end
 	end
-	return #val
+	return #ids
 `)
 
 func (b *RedisBroker) Push(ctx context.Context, topic string, msg *kabaka.Message) error {
@@ -92,8 +104,10 @@ func (b *RedisBroker) Push(ctx context.Context, topic string, msg *kabaka.Messag
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	key := b.prefix + topic
-	err = b.client.RPush(ctx, key, data).Err()
+	queueKey := b.prefix + topic
+	msgKey := b.prefix + topic + ":messages"
+	
+	err = pushScript.Run(ctx, b.client, []string{msgKey, queueKey}, msg.Id, data).Err()
 	if err == nil {
 		// Notify mover that there is a new message
 		b.client.Publish(ctx, b.prefix+topic+":notify", "push")
@@ -107,17 +121,15 @@ func (b *RedisBroker) PushDelayed(ctx context.Context, topic string, msg *kabaka
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	key := b.prefix + topic + ":delayed"
+	delayedKey := b.prefix + topic + ":delayed"
+	msgKey := b.prefix + topic + ":messages"
 	score := time.Now().Add(delay).UnixMilli()
 
 	// Check if this new message will be the new head of the delayed queue
-	head, _ := b.client.ZRangeWithScores(ctx, key, 0, 0).Result()
+	head, _ := b.client.ZRangeWithScores(ctx, delayedKey, 0, 0).Result()
 	isNewHead := len(head) == 0 || float64(score) < head[0].Score
 
-	err = b.client.ZAdd(ctx, key, redis.Z{
-		Score:  float64(score),
-		Member: data,
-	}).Err()
+	err = pushDelayedScript.Run(ctx, b.client, []string{msgKey, delayedKey}, msg.Id, data, score).Err()
 
 	if err == nil && isNewHead {
 		// Notify the poller to wake up and re-calculate sleep time
@@ -184,8 +196,9 @@ func (b *RedisBroker) UnregisterAndCleanup(ctx context.Context, topic string) er
 	processingKey := b.prefix + topic + ":processing"
 	mainKey := b.prefix + topic
 	delayedKey := b.prefix + topic + ":delayed"
+	msgKey := b.prefix + topic + ":messages"
 
-	return b.client.Del(ctx, processingKey, mainKey, delayedKey).Err()
+	return b.client.Del(ctx, processingKey, mainKey, delayedKey, msgKey).Err()
 }
 
 func (b *RedisBroker) listenNotifications() {
@@ -238,8 +251,9 @@ func (b *RedisBroker) listenMover() {
 			for _, topic := range topics {
 				key := b.prefix + topic
 				processingKey := key + ":processing"
+				msgKey := key + ":messages"
 
-				// Attempt non-blocking move
+				// Attempt non-blocking move (moves ID from queue to processing)
 				res, err := b.client.LMove(b.ctx, key, processingKey, "RIGHT", "LEFT").Result()
 				if err != nil {
 					// redis.Nil means the queue is empty, which is expected
@@ -249,8 +263,16 @@ func (b *RedisBroker) listenMover() {
 					continue
 				}
 
+				// Fetch full message from hash warehouse using the ID
+				data, err := b.client.HGet(b.ctx, msgKey, res).Result()
+				if err != nil {
+					// Message ID exists in queue but not in warehouse? 
+					// Should not happen with Lua push, but handle it.
+					continue
+				}
+
 				var msg kabaka.Message
-				if err := json.Unmarshal([]byte(res), &msg); err == nil {
+				if err := json.Unmarshal([]byte(data), &msg); err == nil {
 					select {
 					case b.watchCh <- &kabaka.Task{Topic: topic, Message: &msg}:
 						foundAny = true
@@ -327,10 +349,16 @@ func (b *RedisBroker) Watch(ctx context.Context, topics ...string) (<-chan *kaba
 
 // Finish handles message completion. It removes the message from the processing queue.
 func (b *RedisBroker) Finish(ctx context.Context, topic string, msg *kabaka.Message, processErr error, duration time.Duration) error {
-	// Remove from processing queue (Ack)
-	data, _ := json.Marshal(msg)
+	// 1. Remove from processing queue (Ack) using ID
 	processingKey := b.prefix + topic + ":processing"
-	return b.client.LRem(ctx, processingKey, 1, data).Err()
+	err := b.client.LRem(ctx, processingKey, 1, msg.Id).Err()
+	if err != nil {
+		return err
+	}
+
+	// 2. Remove from hash warehouse
+	msgKey := b.prefix + topic + ":messages"
+	return b.client.HDel(ctx, msgKey, msg.Id).Err()
 }
 
 func (b *RedisBroker) Len(ctx context.Context, topic string) (int64, error) {
