@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+type HandleFunc func(context.Context, *Message) error
+
 type metaCacheEntry struct {
 	internalName string
 	expiresAt    time.Time
@@ -21,6 +23,11 @@ type Kabaka struct {
 	// Metadata cache for lightweight publishing
 	metaCache map[string]*metaCacheEntry
 
+	// Shared worker pool architecture
+	workerPool chan chan *Message
+	workers    []*Worker
+	maxWorkers int
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -31,14 +38,23 @@ type KabakaOption func(*Kabaka)
 func NewKabaka(options ...KabakaOption) *Kabaka {
 	ctx, cancel := context.WithCancel(context.Background())
 	k := &Kabaka{
-		topics:    make(map[string]*Topic),
-		metaCache: make(map[string]*metaCacheEntry),
-		ctx:       ctx,
-		cancel:    cancel,
+		topics:     make(map[string]*Topic),
+		metaCache:  make(map[string]*metaCacheEntry),
+		maxWorkers: 10, // Default worker count
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 
 	for _, opt := range options {
 		opt(k)
+	}
+
+	// Initialize shared worker pool
+	k.workerPool = make(chan chan *Message, k.maxWorkers)
+	for i := 0; i < k.maxWorkers; i++ {
+		worker := NewWorker(k)
+		k.workers = append(k.workers, worker)
+		worker.start()
 	}
 
 	return k
@@ -52,18 +68,8 @@ func (k *Kabaka) Start() {
 func (k *Kabaka) dispatch() {
 	defer k.wg.Done()
 
-	k.mu.RLock()
-	var internalNames []string
-	for name := range k.topics {
-		internalNames = append(internalNames, name)
-	}
-	k.mu.RUnlock()
-
-	if len(internalNames) == 0 {
-		return // Or handle dynamic topic registration later
-	}
-
-	taskCh, err := k.broker.Watch(k.ctx, internalNames...)
+	// In shared queue architecture, we just watch the single shared channel
+	taskCh, err := k.broker.Watch(k.ctx)
 	if err != nil {
 		return
 	}
@@ -76,12 +82,14 @@ func (k *Kabaka) dispatch() {
 			if !ok {
 				return
 			}
-			k.mu.RLock()
-			topic, ok := k.topics[task.Topic]
-			k.mu.RUnlock()
 
-			if ok {
-				topic.receive(task.Message)
+			// Dispatch to an available worker from the SHARED pool
+			// Each worker will handle its own topic lookup based on task.Topic
+			select {
+			case workerCh := <-k.workerPool:
+				workerCh <- task.Message
+			case <-k.ctx.Done():
+				return
 			}
 		}
 	}
@@ -93,6 +101,12 @@ func WithBroker(broker Broker) KabakaOption {
 	}
 }
 
+func WithMaxWorkers(n int) KabakaOption {
+	return func(k *Kabaka) {
+		k.maxWorkers = n
+	}
+}
+
 func (k *Kabaka) generateInternalName(name string) string {
 	h := sha1.New()
 	h.Write([]byte(name))
@@ -101,9 +115,7 @@ func (k *Kabaka) generateInternalName(name string) string {
 
 func (k *Kabaka) getInternalName(name string) (string, error) {
 	k.mu.RLock()
-	// 1. Check local cache first
 	if entry, ok := k.metaCache[name]; ok {
-		// Passive expiration check
 		if time.Now().Before(entry.expiresAt) {
 			k.mu.RUnlock()
 			return entry.internalName, nil
@@ -111,12 +123,10 @@ func (k *Kabaka) getInternalName(name string) (string, error) {
 	}
 	k.mu.RUnlock()
 
-	// 2. Not in cache or expired, ask the broker
 	ctx, cancel := context.WithTimeout(k.ctx, 2*time.Second)
 	defer cancel()
 	internalName, err := k.broker.GetMetadata(ctx, name)
 	if err == nil {
-		// Update cache with 10-minute TTL
 		k.mu.Lock()
 		k.metaCache[name] = &metaCacheEntry{
 			internalName: internalName,
@@ -124,18 +134,6 @@ func (k *Kabaka) getInternalName(name string) (string, error) {
 		}
 		k.mu.Unlock()
 		return internalName, nil
-	}
-
-	// 3. Last resort: If the broker doesn't have it, but we have it locally registered
-	// This handles cases where the topic was just created but not yet in metadata
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-	
-	// Check if we have a topic with this as an original name
-	for _, topic := range k.topics {
-		if topic.Name == name {
-			return topic.InternalName, nil
-		}
 	}
 
 	return "", ErrTopicNotFound
@@ -146,25 +144,15 @@ func (k *Kabaka) CreateTopic(name string, handler HandleFunc, options ...Option)
 	defer k.mu.Unlock()
 
 	internalName := k.generateInternalName(name)
-
-	// Check if already registered locally
 	if _, ok := k.topics[internalName]; ok {
 		return ErrTopicAlreadyCreated
 	}
 
-	// Explicitly register the topic in the broker
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	
-	// 1. Set global metadata
-	if err := k.broker.SetMetadata(ctx, name, internalName); err != nil {
-		return err
-	}
-
-	// 2. Register for polling
-	if err := k.broker.Register(ctx, internalName); err != nil {
-		return err
-	}
+	k.broker.SetMetadata(ctx, name, internalName)
+	k.broker.Register(ctx, internalName)
 
 	topic := newTopic(name, internalName, k.broker, handler, options...)
 	k.topics[internalName] = topic
@@ -175,72 +163,50 @@ func (k *Kabaka) CreateTopic(name string, handler HandleFunc, options ...Option)
 func (k *Kabaka) Publish(name string, message []byte) error {
 	internalName, err := k.getInternalName(name)
 	if err != nil {
-		return err
+		// Fallback to generating it if not found (lightweight producer)
+		internalName = k.generateInternalName(name)
 	}
 
-	// Send message through the broker
 	msg := &Message{
-		Id:        NewUUID(),
-		Value:     message,
-		Retry:     3, // Default retry
-		CreatedAt: time.Now(),
+		Id:           NewUUID(),
+		InternalName: internalName,
+		Value:        message,
+		Retry:        3,
+		CreatedAt:    time.Now(),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	
-	return k.broker.Push(ctx, internalName, msg)
+	return k.broker.Push(ctx, msg)
 }
 
 func (k *Kabaka) PublishDelayed(name string, message []byte, delay time.Duration) error {
 	internalName, err := k.getInternalName(name)
 	if err != nil {
-		return err
+		internalName = k.generateInternalName(name)
 	}
 
 	msg := &Message{
-		Id:        NewUUID(),
-		Value:     message,
-		Retry:     3, // Default retry
-		CreatedAt: time.Now(),
+		Id:           NewUUID(),
+		InternalName: internalName,
+		Value:        message,
+		Retry:        3,
+		CreatedAt:    time.Now(),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	return k.broker.PushDelayed(ctx, internalName, msg, delay)
-}
-
-func (k *Kabaka) CloseTopic(name string) error {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-
-	internalName := k.generateInternalName(name)
-	topic, ok := k.topics[internalName]
-	if !ok {
-		return ErrTopicNotFound
-	}
-
-	topic.stop()
-
-	// Unregister from broker to clean up resources
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_ = k.broker.Unregister(ctx, topic.InternalName)
-
-	delete(k.topics, internalName)
-	return nil
+	return k.broker.PushDelayed(ctx, msg, delay)
 }
 
 func (k *Kabaka) Close() error {
 	k.cancel()
 	k.wg.Wait()
 
-	k.mu.Lock()
-	defer k.mu.Unlock()
-
-	for _, topic := range k.topics {
-		topic.stop()
+	for _, worker := range k.workers {
+		worker.stop()
 	}
 
 	if k.broker != nil {
@@ -248,17 +214,4 @@ func (k *Kabaka) Close() error {
 	}
 
 	return nil
-}
-
-func (k *Kabaka) GetTopicSchema(name string) (string, error) {
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-
-	internalName := k.generateInternalName(name)
-	topic, ok := k.topics[internalName]
-	if !ok {
-		return "", ErrTopicNotFound
-	}
-
-	return topic.schema, nil
 }

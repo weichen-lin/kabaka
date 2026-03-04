@@ -5,11 +5,12 @@ import (
 )
 
 type Message struct {
-	Id        string
-	Value     []byte
-	Retry     int
-	CreatedAt time.Time
-	Headers   map[string]string
+	Id           string
+	InternalName string // Stores the hashed internal name for routing
+	Value        []byte
+	Retry        int
+	CreatedAt    time.Time
+	Headers      map[string]string
 }
 
 func (m *Message) Get(key string) string {
