@@ -2,6 +2,7 @@ package kabaka
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ type MockBroker struct {
 	mu            sync.RWMutex
 	queues        map[string][]*Message
 	registered    map[string]bool
+	meta          map[string]string
 	pushCalls     int
 	finishCalls   int
 	watchChannels map[string]chan *Task
@@ -21,8 +23,25 @@ func NewMockBroker() *MockBroker {
 	return &MockBroker{
 		queues:        make(map[string][]*Message),
 		registered:    make(map[string]bool),
+		meta:          make(map[string]string),
 		watchChannels: make(map[string]chan *Task),
 	}
+}
+
+func (m *MockBroker) GetMetadata(ctx context.Context, name string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if val, ok := m.meta[name]; ok {
+		return val, nil
+	}
+	return "", fmt.Errorf("not found")
+}
+
+func (m *MockBroker) SetMetadata(ctx context.Context, name string, internalName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.meta[name] = internalName
+	return nil
 }
 
 func (m *MockBroker) Register(ctx context.Context, topic string) error {

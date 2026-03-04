@@ -165,6 +165,16 @@ func (b *RedisBroker) Register(ctx context.Context, topic string) error {
 	return nil
 }
 
+func (b *RedisBroker) SetMetadata(ctx context.Context, name string, internalName string) error {
+	key := b.prefix + "meta:topics"
+	return b.client.HSet(ctx, key, name, internalName).Err()
+}
+
+func (b *RedisBroker) GetMetadata(ctx context.Context, name string) (string, error) {
+	key := b.prefix + "meta:topics"
+	return b.client.HGet(ctx, key, name).Result()
+}
+
 func (b *RedisBroker) Unregister(ctx context.Context, topic string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()

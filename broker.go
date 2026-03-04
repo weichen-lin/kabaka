@@ -20,4 +20,8 @@ type Broker interface {
 	Finish(ctx context.Context, topic string, msg *Message, processErr error, duration time.Duration) error
 	Len(ctx context.Context, topic string) (int64, error)
 	Close() error
+
+	// Metadata management
+	SetMetadata(ctx context.Context, name string, internalName string) error
+	GetMetadata(ctx context.Context, name string) (string, error)
 }
