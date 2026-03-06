@@ -42,7 +42,7 @@ const (
 	Retry   MessageStatus = "retry"
 	Error   MessageStatus = "error"
 
-	Timeout           MessageStatus = "timeout"
+	Timeout MessageStatus = "timeout"
 )
 
 type LogMessage struct {

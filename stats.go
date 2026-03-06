@@ -33,14 +33,15 @@ type KabakaStats struct {
 
 // TopicSnapshot is a point-in-time copy of a single topic's metrics.
 type TopicSnapshot struct {
-	ProcessedTotal int64
-	FailedTotal    int64
-	RetryTotal     int64
-	AvgDuration    time.Duration
-	QueuePending   int64 // messages waiting in queue
-	QueueDelayed   int64 // messages in delayed queue
+	ProcessedTotal  int64
+	FailedTotal     int64
+	RetryTotal      int64
+	AvgDuration     time.Duration
+	QueuePending    int64 // messages waiting in queue
+	QueueDelayed    int64 // messages in delayed queue
 	QueueProcessing int64 // messages currently being processed
 }
+
 // GetStats returns a point-in-time snapshot of all metrics.
 func (k *Kabaka) GetStats() KabakaStats {
 	active := k.activejobs.Load()

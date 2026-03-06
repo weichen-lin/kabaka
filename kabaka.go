@@ -46,10 +46,10 @@ func NewKabaka(options ...KabakaOption) *Kabaka {
 	k := &Kabaka{
 		topics:        make(map[string]*Topic),
 		metaCache:     make(map[string]*metaCacheEntry),
-		metaCacheTTL:  5 * time.Minute,     // Default metadata cache TTL
+		metaCacheTTL:  5 * time.Minute, // Default metadata cache TTL
 		logger:        &DefaultLogger{},
-		maxWorkers:    10,                  // Default worker count
-		brokerTimeout: 2 * time.Second,     // Default broker timeout
+		maxWorkers:    10,              // Default worker count
+		brokerTimeout: 2 * time.Second, // Default broker timeout
 		ctx:           ctx,
 		cancel:        cancel,
 	}

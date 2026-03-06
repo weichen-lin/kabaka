@@ -333,7 +333,7 @@ func (b *RedisBroker) startTimeoutScanner() {
 			now := time.Now().UnixMilli()
 			// Redeliver timeout tasks (visibility timeout expired)
 			count, _ := redeliverTimeoutScript.Run(b.ctx, b.client, []string{processingKey, queueKey, msgKey, timeoutKey}, now, statsPrefix).Int()
-			
+
 			// Notify mover if tasks were redelivered
 			if count > 0 {
 				select {
@@ -370,7 +370,7 @@ func (b *RedisBroker) GetTopicMetadata(ctx context.Context, name string) (*kabak
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var meta kabaka.TopicMetadata
 	if err := json.Unmarshal([]byte(data), &meta); err != nil {
 		return nil, fmt.Errorf("unmarshal metadata failed: %w", err)
