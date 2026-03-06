@@ -42,7 +42,6 @@ const (
 	Retry   MessageStatus = "retry"
 	Error   MessageStatus = "error"
 
-	WorkerStartFailed MessageStatus = "worker_start_failed"
 	Timeout           MessageStatus = "timeout"
 )
 
@@ -78,3 +77,11 @@ func (l *DefaultLogger) Error(args *LogMessage) {
 	log.Printf("%s[ERROR]%s %s: %s - Action: %s, Status: %s, SpendTime: %dms, CreatedAt: %s\n",
 		colorRed, colorReset, args.TopicName, args.Message, args.Action, args.MessageStatus, args.SpendTime, args.CreatedAt.Format(time.RFC3339))
 }
+
+// NoOpLogger is a logger that does nothing.
+type NoOpLogger struct{}
+
+func (l *NoOpLogger) Debug(args *LogMessage) {}
+func (l *NoOpLogger) Info(args *LogMessage)  {}
+func (l *NoOpLogger) Warn(args *LogMessage)  {}
+func (l *NoOpLogger) Error(args *LogMessage) {}
