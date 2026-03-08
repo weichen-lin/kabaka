@@ -1,0 +1,41 @@
+{
+	"name": "dashboard",
+	"module": "index.ts",
+	"type": "module",
+	"private": true,
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6",
+		"@tailwindcss/vite": "^4.2.1",
+		"@tanstack/router-vite-plugin": "^1.166.2",
+		"@types/bun": "latest",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^5.1.4",
+		"autoprefixer": "^10.4.27",
+		"postcss": "^8.5.8",
+		"tailwindcss": "^4.2.1",
+		"vite": "^7.3.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5.9.3"
+	},
+	"scripts": {
+		"dev": "vite",
+		"build": "bun run check && tsc && vite build",
+		"preview": "vite preview",
+		"format": "biome format --write .",
+		"lint": "biome lint --write .",
+		"check": "biome check --write ."
+	},
+	"dependencies": {
+		"@tanstack/react-query": "^5.90.21",
+		"@tanstack/react-router": "^1.166.2",
+		"clsx": "^2.1.1",
+		"framer-motion": "^12.34.4",
+		"lucide-react": "^0.576.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"tailwind-merge": "^3.5.0",
+		"zustand": "^5.0.11"
+	}
+}

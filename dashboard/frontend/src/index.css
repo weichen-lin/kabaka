@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+:root {
+  --background: oklch(0.98 0.01 93.48);
+  --foreground: oklch(0.34 0.03 94.42);
+  --card: oklch(0.98 0.01 93.48);
+  --card-foreground: oklch(0.19 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.27 0.02 99.7);
+  --primary: oklch(0.62 0.14 39.15);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.92 0.01 87.42);
+  --secondary-foreground: oklch(0.43 0.02 99.33);
+  --muted: oklch(0.95 0.01 91.46);
+  --muted-foreground: oklch(0.61 0.01 91.49);
+  --accent: oklch(0.92 0.01 87.42);
+  --accent-foreground: oklch(0.27 0.02 99.7);
+  --destructive: oklch(0.19 0 0);
+  --border: oklch(0.91 0.01 106.47);
+  --input: oklch(0.76 0.02 96.91);
+  --ring: oklch(0.59 0.17 252.92);
+
+  --radius: 0.5rem;
+
+  /* Map Claude UI variables to Kabaka variables for compatibility */
+  --kb-bg: var(--background);
+  --kb-card: var(--card);
+  --kb-border: var(--border);
+  --kb-neon: var(--primary);
+  --kb-warning: oklch(0.69 0.16 65); /* Warm amber */
+  --kb-info: oklch(0.69 0.16 250); /* Soft blue */
+  --kb-text: var(--foreground);
+  --kb-subtext: var(--muted-foreground);
+
+  font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--kb-bg);
+  color: var(--kb-text);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.dark {
+  --background: oklch(0.27 0 0);
+  --foreground: oklch(0.81 0.01 93.53);
+  --card: oklch(0.27 0 0);
+  --card-foreground: oklch(0.98 0.01 93.48);
+  --popover: oklch(0.31 0 0);
+  --popover-foreground: oklch(0.92 0 0);
+  --primary: oklch(0.67 0.13 38.92);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.98 0.01 93.48);
+  --secondary-foreground: oklch(0.31 0 0);
+  --muted: oklch(0.22 0 0);
+  --muted-foreground: oklch(0.77 0.02 100.64);
+  --accent: oklch(0.21 0.01 88.79);
+  --accent-foreground: oklch(0.97 0.01 93.49);
+  --destructive: oklch(0.64 0.21 25.39);
+  --border: oklch(0.36 0.01 106.85);
+  --input: oklch(0.43 0.01 99.03);
+  --ring: oklch(0.59 0.17 252.92);
+
+  --kb-bg: var(--background);
+  --kb-card: oklch(0.31 0 0); /* Slightly lighter for card depth */
+  --kb-border: var(--border);
+  --kb-text: var(--foreground);
+  --kb-subtext: var(--muted-foreground);
+}
+
+@theme {
+  --color-kb-bg: var(--kb-bg);
+  --color-kb-card: var(--kb-card);
+  --color-kb-border: var(--kb-border);
+  --color-kb-neon: var(--kb-neon);
+  --color-kb-warning: var(--kb-warning);
+  --color-kb-info: var(--kb-info);
+  --color-kb-text: var(--kb-text);
+  --color-kb-subtext: var(--kb-subtext);
+
+  --animate-scanline: scanline 8s linear infinite;
+  --animate-flicker: flicker 0.15s infinite;
+
+  @keyframes scanline {
+    0% {
+      transform: translateY(-100%);
+    }
+    100% {
+      transform: translateY(1000%);
+    }
+  }
+  @keyframes flicker {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Industrial Texture - Subtler for Claude style */
+.cyber-grid {
+  background-image:
+    linear-gradient(to right, var(--kb-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--kb-border) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.05;
+}
+
+.scanline {
+  height: 2px;
+  background: var(--kb-neon);
+  opacity: 0.01;
+  box-shadow: 0 0 10px var(--kb-neon);
+}
+
+.noise-texture {
+  opacity: 0.01;
+  background: url("https://grainy-gradients.vercel.app/noise.svg");
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--kb-bg);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--kb-border);
+  border-radius: var(--radius);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--kb-subtext);
+}
+
+/* Claude-like card elegance */
+.bg-kb-card {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius);
+}

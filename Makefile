@@ -3,7 +3,7 @@ VALKEY_IMAGE = valkey/valkey:latest
 VALKEY_CONTAINER = kabaka-valkey
 VALKEY_PORT = 6379
 
-.PHONY: help up down restart test test-verbose
+.PHONY: help up down restart test test-verbose dash dash-build clean
 
 help:
 	@echo "Usage:"
@@ -11,6 +11,7 @@ help:
 	@echo "  make down    - Stop and remove Valkey container"
 	@echo "  make restart - Restart Valkey container"
 	@echo "  make test    - Run all tests"
+	@echo "  make dash    - Build frontend and run dashboard example"
 
 up:
 	@if [ ! "$$(docker ps -q -f name=$(VALKEY_CONTAINER))" ]; then \
@@ -34,3 +35,18 @@ test: up
 
 test-verbose: up
 	go test -v ./...
+
+dash-build:
+	@echo "🏗️  Building Frontend with Bun..."
+	@cd dashboard/frontend && bun run build
+	@echo "📦 Syncing dist assets..."
+	@rm -rf dashboard/dist && cp -r dashboard/frontend/dist dashboard/dist
+
+dash: dash-build
+	@echo "🚀 Starting Kabaka Dashboard..."
+	@go run dashboard/examples/test_app.go
+
+clean:
+	@rm -f kabaka-test
+	@rm -rf dashboard/dist
+	@echo "🧹 Cleaned up temporary binaries and assets"
