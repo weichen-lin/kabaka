@@ -5,28 +5,32 @@ const API_BASE = "/api/v1";
 
 export interface Topic {
   name: string;
-  processedTotal: number;
-  failedTotal: number;
-  retryTotal: number;
-  avgDuration: number;
-  queueStats?: {
+  internal_name: string;
+  processed_total: number;
+  failed_total: number;
+  retry_total: number;
+  avg_duration: number;
+  success_rate: string;
+  max_retries: number;
+  retry_delay: number;
+  process_timeout: number;
+  queue_stats?: {
     pending: number;
     delayed: number;
     processing: number;
   };
-  successRate: string;
 }
 
 export interface Stats {
   stats: {
-    ActiveJobs: number;
-    IdleSlots: number;
-    Queue: {
-      Pending: number;
-      Delayed: number;
-      Processing: number;
+    active_jobs: number;
+    idle_slots: number;
+    queue: {
+      pending: number;
+      delayed: number;
+      processing: number;
     };
-    Topics: Record<string, Topic>;
+    topics: Record<string, Topic>;
   };
   system: {
     goroutines: number;
@@ -60,9 +64,14 @@ export const useTopics = () => {
   });
 };
 
+import { useStore } from "../store/useStore";
+
+// ... (Topic, Stats interfaces and useStats, useTopics keep unchanged)
+
 // WebSocket Hook: Listening for server pushes and manually updating the Query Cache
 export const useWebSocket = () => {
   const queryClient = useQueryClient();
+  const { setWSStatus } = useStore();
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -72,20 +81,38 @@ export const useWebSocket = () => {
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
+      setWSStatus("connecting");
       socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        setWSStatus("connected");
+      };
 
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           if (message.type === "stats") {
-            // Update the TanStack Query cache with the full data object from Go
+            const statsData = message.data;
+
+            // 1. Update overall stats
             queryClient.setQueryData(["stats"], (old: Stats | undefined) => {
-              if (!old) return message.data;
+              if (!old) return statsData;
               return {
-                ...message.data,
+                ...statsData,
                 timestamp: message.timestamp,
               };
             });
+
+            // 2. Sync Topic strategy list immediately
+            if (statsData.stats?.topics) {
+              const topicsArray = Object.entries(statsData.stats.topics).map(
+                ([name, topic]) => ({
+                  ...(topic as Topic),
+                  name: name,
+                }),
+              );
+              queryClient.setQueryData(["topics"], { topics: topicsArray });
+            }
           }
         } catch (err) {
           console.error("WS parse error:", err);
@@ -93,7 +120,12 @@ export const useWebSocket = () => {
       };
 
       socket.onclose = () => {
-        reconnectTimer = setTimeout(connect, 2000);
+        setWSStatus("disconnected");
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = () => {
+        socket.close();
       };
     };
 
@@ -103,5 +135,5 @@ export const useWebSocket = () => {
       if (socket) socket.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [queryClient]);
+  }, [queryClient, setWSStatus]);
 };

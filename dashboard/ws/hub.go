@@ -7,7 +7,7 @@ import (
 
 // Message is the WebSocket message format
 type Message struct {
-	Type      string      `json:"type"`      // stats, logs, etc.
+	Type      string      `json:"type"` // stats, logs, etc.
 	Channel   string      `json:"channel"`
 	Timestamp int64       `json:"timestamp"`
 	Data      interface{} `json:"data"`

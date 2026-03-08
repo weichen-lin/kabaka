@@ -1,17 +1,33 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Database, Filter, Plus, RefreshCw, Search } from "lucide-react";
+import { Database, Filter, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 import { type Topic, useTopics } from "../api/queries";
+import { useStore } from "../store/useStore";
 import { StatusTag } from "./StatusTag";
+import { TopicDrawer } from "./TopicDrawer";
+
+const formatDuration = (ms: number) => {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${minutes.toFixed(1)}m`;
+  const hours = minutes / 60;
+  return `${hours.toFixed(1)}h`;
+};
 
 export const Topics = () => {
   const { data, isLoading, refetch, isRefetching } = useTopics();
+  const { activeTopic, setActiveTopic } = useStore();
   const [filter, setFilter] = useState("");
 
   const filteredTopics =
     data?.topics.filter((topic: Topic) =>
       topic.name.toLowerCase().includes(filter.toLowerCase()),
     ) || [];
+
+  const selectedTopicData =
+    filteredTopics.find((t) => t.name === activeTopic) || null;
 
   return (
     <div className="flex-1 overflow-y-auto p-8 space-y-6 relative z-10">
@@ -34,13 +50,6 @@ export const Topics = () => {
               size={16}
               className={`text-kb-subtext group-hover:text-kb-neon ${isRefetching ? "animate-spin" : ""}`}
             />
-          </button>
-          <button
-            type="button"
-            className="flex items-center gap-2 bg-kb-neon text-black px-4 py-2 font-black text-[10px] uppercase italic hover:brightness-110 active:scale-95 transition-all"
-          >
-            <Plus size={14} strokeWidth={3} />
-            Register New Topic
           </button>
         </div>
       </header>
@@ -110,7 +119,7 @@ export const Topics = () => {
                         Processed
                       </div>
                       <div className="text-sm font-black text-kb-text">
-                        {topic.processedTotal.toLocaleString()}
+                        {topic.processed_total.toLocaleString()}
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -118,7 +127,7 @@ export const Topics = () => {
                         Success Rate
                       </div>
                       <div className="text-sm font-black text-kb-neon">
-                        {topic.successRate}%
+                        {topic.success_rate}%
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -126,7 +135,7 @@ export const Topics = () => {
                         Avg Duration
                       </div>
                       <div className="text-sm font-black text-kb-info">
-                        {topic.avgDuration}ms
+                        {formatDuration(topic.avg_duration)}
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -134,7 +143,7 @@ export const Topics = () => {
                         Pending
                       </div>
                       <div className="text-sm font-black text-kb-warning">
-                        {topic.queueStats?.pending ?? 0}
+                        {topic.queue_stats?.pending ?? 0}
                       </div>
                     </div>
                   </div>
@@ -142,6 +151,7 @@ export const Topics = () => {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      onClick={() => setActiveTopic(topic.name)}
                       className="px-4 py-2 border border-kb-border text-[9px] font-black uppercase tracking-widest hover:bg-kb-text/5 transition-colors"
                     >
                       Manage
@@ -178,6 +188,11 @@ export const Topics = () => {
           </AnimatePresence>
         )}
       </div>
+
+      <TopicDrawer
+        topic={selectedTopicData}
+        onClose={() => setActiveTopic(null)}
+      />
     </div>
   );
 };

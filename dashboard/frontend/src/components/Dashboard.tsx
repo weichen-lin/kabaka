@@ -52,7 +52,7 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Active Jobs"
-          val={stats?.ActiveJobs ?? 0}
+          val={stats?.active_jobs ?? 0}
           unit="qty"
           icon={Activity}
           color="text-kb-neon"
@@ -60,21 +60,21 @@ export const Dashboard = () => {
         />
         <StatCard
           label="Idle Slots"
-          val={stats?.IdleSlots ?? 0}
+          val={stats?.idle_slots ?? 0}
           unit="qty"
           icon={Cpu}
           color="text-kb-info"
         />
         <StatCard
           label="Queue Pending"
-          val={stats?.Queue?.Pending ?? 0}
+          val={stats?.queue?.pending ?? 0}
           unit="msg"
           icon={Server}
           color="text-kb-warning"
         />
         <StatCard
           label="Queue Delayed"
-          val={stats?.Queue?.Delayed ?? 0}
+          val={stats?.queue?.delayed ?? 0}
           unit="msg"
           icon={ShieldAlert}
           color="text-red-500"
@@ -93,13 +93,13 @@ export const Dashboard = () => {
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-kb-neon shadow-[0_0_8px_var(--kb-neon)]" />
                 <span className="text-[9px] font-black text-kb-text uppercase">
-                  Active: {stats?.ActiveJobs || 0}
+                  Active: {stats?.active_jobs || 0}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-kb-border" />
                 <span className="text-[9px] font-black text-kb-subtext uppercase">
-                  Idle: {stats?.IdleSlots || 0}
+                  Idle: {stats?.idle_slots || 0}
                 </span>
               </div>
             </div>
@@ -107,7 +107,7 @@ export const Dashboard = () => {
 
           <div className="grid grid-cols-10 sm:grid-cols-25 md:grid-cols-50 gap-3">
             {Array.from({
-              length: (stats?.ActiveJobs || 0) + (stats?.IdleSlots || 0),
+              length: (stats?.active_jobs || 0) + (stats?.idle_slots || 0),
             }).map((_, i) => (
               <motion.div
                 // biome-ignore lint/suspicious/noArrayIndexKey: visualization slots have no unique stable ID
@@ -115,14 +115,14 @@ export const Dashboard = () => {
                 initial={false}
                 animate={{
                   backgroundColor:
-                    i < (stats?.ActiveJobs || 0)
+                    i < (stats?.active_jobs || 0)
                       ? "var(--kb-neon)"
                       : "rgba(255,255,255,0.05)",
                   boxShadow:
-                    i < (stats?.ActiveJobs || 0)
+                    i < (stats?.active_jobs || 0)
                       ? "0 0 12px var(--kb-neon)"
                       : "none",
-                  scale: i < (stats?.ActiveJobs || 0) ? [1, 1.2, 1] : 1,
+                  scale: i < (stats?.active_jobs || 0) ? [1, 1.2, 1] : 1,
                 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 className="h-4 w-full min-w-[4px] rounded-sm border border-kb-border/30"

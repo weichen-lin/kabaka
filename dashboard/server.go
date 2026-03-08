@@ -212,24 +212,22 @@ func (s *Server) handleTopics(w http.ResponseWriter, r *http.Request) {
 	// Transform map to slice for frontend consistency
 	topics := make([]map[string]interface{}, 0, len(stats.Topics))
 	for name, snapshot := range stats.Topics {
-		// Calculate success rate
-		var successRate float64 = 100
-		if snapshot.ProcessedTotal > 0 {
-			successRate = float64(snapshot.ProcessedTotal-snapshot.FailedTotal) / float64(snapshot.ProcessedTotal) * 100
-		}
-
 		topics = append(topics, map[string]interface{}{
-			"name":           name,
-			"processedTotal": snapshot.ProcessedTotal,
-			"failedTotal":    snapshot.FailedTotal,
-			"retryTotal":     snapshot.RetryTotal,
-			"avgDuration":    snapshot.AvgDuration.Milliseconds(),
-			"queueStats": map[string]int64{
+			"name":            name,
+			"processed_total": snapshot.ProcessedTotal,
+			"failed_total":    snapshot.FailedTotal,
+			"retry_total":     snapshot.RetryTotal,
+			"avg_duration":    snapshot.AvgDurationMs,
+			"queue_stats": map[string]int64{
 				"pending":    snapshot.QueuePending,
 				"delayed":    snapshot.QueueDelayed,
 				"processing": snapshot.QueueProcessing,
 			},
-			"successRate": fmt.Sprintf("%.2f", successRate),
+			"success_rate":    snapshot.SuccessRate,
+			"max_retries":     snapshot.MaxRetries,
+			"retry_delay":     snapshot.RetryDelay,
+			"process_timeout": snapshot.ProcessTimeout,
+			"internal_name":   snapshot.InternalName,
 		})
 	}
 

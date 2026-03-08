@@ -332,12 +332,12 @@ func BenchmarkConcurrentPublish_1000Goroutines(b *testing.B) {
 // benchmarkConcurrentPublish is the common implementation for concurrent publish tests
 func benchmarkConcurrentPublish(b *testing.B, goroutines int) {
 	metrics := newBenchmarkMetrics()
-	
+
 	// Scale workers based on goroutines to avoid bottleneck
 	// For 1000 goroutines, we need at least 500-1000 workers
 	workers := 100
 	useFastHandler := false
-	
+
 	if goroutines >= 1000 {
 		workers = 1000
 		useFastHandler = true // Use 1ms handler instead of 10ms
@@ -345,7 +345,7 @@ func benchmarkConcurrentPublish(b *testing.B, goroutines int) {
 	} else if goroutines >= 100 {
 		workers = 200
 	}
-	
+
 	var k *kabaka.Kabaka
 	if useFastHandler {
 		k = setupTestKabakaFast(b, workers, metrics)
@@ -361,12 +361,12 @@ func benchmarkConcurrentPublish(b *testing.B, goroutines int) {
 	messagesPerGoroutine := 100
 	if goroutines >= 1000 {
 		messagesPerGoroutine = 5 // 1000 * 5 = 5,000 messages (more realistic)
-		b.Logf("⚠️  High concurrency: %d goroutines × %d messages = %d total", 
+		b.Logf("⚠️  High concurrency: %d goroutines × %d messages = %d total",
 			goroutines, messagesPerGoroutine, goroutines*messagesPerGoroutine)
 	} else if goroutines >= 100 {
 		messagesPerGoroutine = 50 // 100 * 50 = 5,000 messages
 	}
-	
+
 	totalMessages := goroutines * messagesPerGoroutine
 
 	b.ResetTimer()
@@ -458,7 +458,7 @@ func benchmarkMultiTopic(b *testing.B, topicCount int) {
 		messagesPerTopic = 50 // 100 topics * 50 = 5000 messages
 		b.Logf("Reduced messages per topic to %d for %d topics", messagesPerTopic, topicCount)
 	}
-	
+
 	totalMessages := topicCount * messagesPerTopic
 
 	b.ResetTimer()

@@ -1,8 +1,8 @@
-import { Menu, Moon, Sun } from "lucide-react";
+import { Menu, Moon, Sun, Wifi, WifiOff } from "lucide-react";
 import { useStore } from "../store/useStore";
 
 export const Header = () => {
-  const { theme, toggleTheme, toggleSidebar } = useStore();
+  const { theme, toggleTheme, toggleSidebar, wsStatus } = useStore();
 
   return (
     <header className="h-16 border-b border-kb-border px-8 flex justify-between items-center bg-kb-card/50 backdrop-blur-sm relative z-20">
@@ -14,6 +14,31 @@ export const Header = () => {
         >
           <Menu size={18} />
         </button>
+
+        <div className="h-4 w-[1px] bg-kb-border mx-2" />
+
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${
+              wsStatus === "connected"
+                ? "bg-kb-neon shadow-[0_0_8px_var(--kb-neon)]"
+                : wsStatus === "connecting"
+                  ? "bg-kb-warning animate-pulse"
+                  : "bg-red-500"
+            }`}
+          />
+          <span className="text-[9px] font-black uppercase tracking-widest text-kb-subtext">
+            {wsStatus === "connected" ? (
+              <span className="flex items-center gap-1">
+                <Wifi size={10} /> Live_Sync
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <WifiOff size={10} /> {wsStatus.toUpperCase()}
+              </span>
+            )}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-6">

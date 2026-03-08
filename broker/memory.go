@@ -70,7 +70,7 @@ type MemoryBroker struct {
 	dispatchInterval        time.Duration
 	delayedCheckInterval    time.Duration
 	processingCheckInterval time.Duration
-	
+
 	// Max retry attempts for failed messages (0 = unlimited)
 	maxRetries int
 }
@@ -465,13 +465,13 @@ func (mb *MemoryBroker) cleanupStaleProcessing() {
 				if now.Sub(entry.startTime) > timeout {
 					msg := entry.message
 					msg.Retry++ // Increment retry count
-					
+
 					// Check max retries (0 = unlimited)
 					if mb.maxRetries == 0 || msg.Retry <= mb.maxRetries {
 						staleMessages = append(staleMessages, msg)
 					}
 					// else: message exceeded max retries, drop it
-					
+
 					delete(mb.processing, msgID)
 				}
 			}

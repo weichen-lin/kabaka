@@ -137,6 +137,7 @@ func (k *Kabaka) buildJob(topic *Topic, msg *Message) func() {
 			} else {
 				// No retries left — final failure
 				stats.FailedTotal.Add(1)
+				stats.ProcessedTotal.Add(1)
 
 				// Log failure
 				k.logger.Error(&LogMessage{
