@@ -91,7 +91,7 @@ func main() {
 	}()
 
 	// 7. Start Dashboard
-	dashboardAddr := "0.0.0.0:3000"
+	dashboardAddr := "0.0.0.0:8787"
 	dashServer, err := dashboard.StartEmbeddedAsync(k, dashboardAddr)
 	if err != nil {
 		fmt.Printf("Failed to start dashboard: %v\n", err)
