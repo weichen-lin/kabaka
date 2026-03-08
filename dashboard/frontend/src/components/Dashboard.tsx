@@ -125,14 +125,10 @@ export const Dashboard = () => {
                   scale: i < (stats?.active_jobs || 0) ? [1, 1.2, 1] : 1,
                 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="h-4 w-full min-w-[4px] rounded-sm border border-kb-border/30"
+                className="h-4 w-full min-w-[4px] rounded-sm border"
               />
             ))}
           </div>
-
-          <p className="mt-6 text-[9px] text-kb-subtext italic uppercase font-bold opacity-40 text-center tracking-widest">
-            High-concurrency thread pool execution matrix
-          </p>
         </section>
 
         {/* System Environment - Full Width */}

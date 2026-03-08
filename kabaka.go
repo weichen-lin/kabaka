@@ -121,6 +121,29 @@ func (k *Kabaka) getOrFetchMetadata(ctx context.Context, topicName string) (*Top
 	return meta, nil
 }
 
+// SetTopicPaused sets the paused state of a topic.
+func (k *Kabaka) SetTopicPaused(name string, paused bool) error {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+
+	internalName := k.generateInternalName(name)
+	topic, ok := k.topics[internalName]
+	if !ok {
+		return ErrTopicNotFound
+	}
+
+	topic.Paused.Store(paused)
+	return nil
+}
+
+// PurgeTopic removes all pending/delayed tasks for a topic from the broker.
+func (k *Kabaka) PurgeTopic(name string, internalName string) error {
+	ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
+	defer cancel()
+
+	return k.broker.Purge(ctx, internalName)
+}
+
 // SetMetaCacheTTL sets the TTL for metadata cache entries at runtime.
 func (k *Kabaka) SetMetaCacheTTL(ttl time.Duration) {
 	k.mu.Lock()

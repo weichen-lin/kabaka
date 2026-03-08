@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 const API_BASE = "/api/v1";
@@ -11,14 +11,13 @@ export interface Topic {
   retry_total: number;
   avg_duration: number;
   success_rate: string;
+  paused: boolean;
   max_retries: number;
   retry_delay: number;
   process_timeout: number;
-  queue_stats?: {
-    pending: number;
-    delayed: number;
-    processing: number;
-  };
+  queue_pending: number;
+  queue_delayed: number;
+  queue_processing: number;
 }
 
 export interface Stats {
@@ -62,6 +61,58 @@ export const useTopics = () => {
       return res.json();
     },
   });
+};
+
+export const useTopicActions = () => {
+  const queryClient = useQueryClient();
+
+  const pauseMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(`${API_BASE}/topics/${name}/pause`, {
+        method: "POST",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(`${API_BASE}/topics/${name}/resume`, {
+        method: "POST",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(`${API_BASE}/topics/${name}/purge`, {
+        method: "POST",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  return {
+    pause: pauseMutation.mutate,
+    resume: resumeMutation.mutate,
+    purge: purgeMutation.mutate,
+    isPausing: pauseMutation.isPending,
+    isResuming: resumeMutation.isPending,
+    isPurging: purgeMutation.isPending,
+  };
 };
 
 import { useStore } from "../store/useStore";

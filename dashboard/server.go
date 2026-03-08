@@ -121,6 +121,9 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
 	s.mux.HandleFunc("GET /api/v1/topics", s.handleTopics)
+	s.mux.HandleFunc("POST /api/v1/topics/{name}/pause", s.handleTopicPause)
+	s.mux.HandleFunc("POST /api/v1/topics/{name}/resume", s.handleTopicResume)
+	s.mux.HandleFunc("POST /api/v1/topics/{name}/purge", s.handleTopicPurge)
 
 	// WebSocket Route
 	s.mux.HandleFunc("GET /api/v1/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +132,41 @@ func (s *Server) setupRoutes() {
 
 	// Static files
 	s.setupFrontendRoutes()
+}
+
+func (s *Server) handleTopicPause(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.kabaka.SetTopicPaused(name, true); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]string{"status": "paused", "topic": name})
+}
+
+func (s *Server) handleTopicResume(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.kabaka.SetTopicPaused(name, false); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]string{"status": "resumed", "topic": name})
+}
+
+func (s *Server) handleTopicPurge(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	stats := s.kabaka.GetStats()
+	snapshot, ok := stats.Topics[name]
+	if !ok {
+		http.Error(w, "Topic not found", http.StatusNotFound)
+		return
+	}
+
+	if err := s.kabaka.PurgeTopic(name, snapshot.InternalName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]string{"status": "purged", "topic": name})
 }
 
 // setupFrontendRoutes sets up static file serving from embedded dist folder
@@ -213,21 +251,20 @@ func (s *Server) handleTopics(w http.ResponseWriter, r *http.Request) {
 	topics := make([]map[string]interface{}, 0, len(stats.Topics))
 	for name, snapshot := range stats.Topics {
 		topics = append(topics, map[string]interface{}{
-			"name":            name,
-			"processed_total": snapshot.ProcessedTotal,
-			"failed_total":    snapshot.FailedTotal,
-			"retry_total":     snapshot.RetryTotal,
-			"avg_duration":    snapshot.AvgDurationMs,
-			"queue_stats": map[string]int64{
-				"pending":    snapshot.QueuePending,
-				"delayed":    snapshot.QueueDelayed,
-				"processing": snapshot.QueueProcessing,
-			},
-			"success_rate":    snapshot.SuccessRate,
-			"max_retries":     snapshot.MaxRetries,
-			"retry_delay":     snapshot.RetryDelay,
-			"process_timeout": snapshot.ProcessTimeout,
-			"internal_name":   snapshot.InternalName,
+			"name":             name,
+			"processed_total":  snapshot.ProcessedTotal,
+			"failed_total":     snapshot.FailedTotal,
+			"retry_total":      snapshot.RetryTotal,
+			"avg_duration":     snapshot.AvgDurationMs,
+			"queue_pending":    snapshot.QueuePending,
+			"queue_delayed":    snapshot.QueueDelayed,
+			"queue_processing": snapshot.QueueProcessing,
+			"success_rate":     snapshot.SuccessRate,
+			"paused":           snapshot.Paused,
+			"max_retries":      snapshot.MaxRetries,
+			"retry_delay":      snapshot.RetryDelay,
+			"process_timeout":  snapshot.ProcessTimeout,
+			"internal_name":    snapshot.InternalName,
 		})
 	}
 

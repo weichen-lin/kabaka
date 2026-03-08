@@ -319,6 +319,38 @@ func (mb *MemoryBroker) TopicQueueStats(ctx context.Context, internalName string
 	return stats, nil
 }
 
+// Purge removes all pending and delayed messages for a specific topic.
+func (mb *MemoryBroker) Purge(ctx context.Context, internalName string) error {
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+
+	if mb.isClosed() {
+		return fmt.Errorf("broker is closed")
+	}
+
+	// Clean up pending messages
+	var next *list.Element
+	for elem := mb.messages.Front(); elem != nil; elem = next {
+		next = elem.Next()
+		msg := elem.Value.(*kabaka.Message)
+		if msg.InternalName == internalName {
+			mb.messages.Remove(elem)
+		}
+	}
+
+	// Clean up delayed messages - rebuild heap without matching messages
+	newDelayed := &delayedHeap{}
+	for _, dm := range *mb.delayed {
+		if dm.message.InternalName != internalName {
+			*newDelayed = append(*newDelayed, dm)
+		}
+	}
+	heap.Init(newDelayed)
+	mb.delayed = newDelayed
+
+	return nil
+}
+
 // Close shuts down the broker.
 func (mb *MemoryBroker) Close() error {
 	mb.closeOnce.Do(func() {

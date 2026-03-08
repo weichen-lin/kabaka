@@ -4,6 +4,7 @@ import {
   Clock,
   Database,
   Pause,
+  Play,
   RotateCcw,
   Settings,
   ShieldCheck,
@@ -11,7 +12,8 @@ import {
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { Topic } from "../api/queries";
+import { type Topic, useTopicActions } from "../api/queries";
+import { useStore } from "../store/useStore";
 
 interface TopicDrawerProps {
   topic: Topic | null;
@@ -29,6 +31,38 @@ const formatDuration = (ms: number) => {
 };
 
 export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
+  const { pause, resume, purge, isPausing, isResuming, isPurging } =
+    useTopicActions();
+  const { openConfirm } = useStore();
+
+  const handlePauseToggle = () => {
+    if (!topic) return;
+    if (topic.paused) {
+      resume(topic.name);
+    } else {
+      pause(topic.name);
+    }
+  };
+
+  const handlePurge = () => {
+    if (!topic) return;
+    openConfirm({
+      title: "Purge_Topic_Queue",
+      description: `Target Topic: ${topic.name}`,
+      message: (
+        <>
+          This action will{" "}
+          <span className="font-bold text-kb-text">PERMANENTLY DELETE</span>{" "}
+          all:
+          {"\n"}• Pending tasks in the main queue
+          {"\n"}• Delayed tasks scheduled for the future
+        </>
+      ),
+      variant: "danger",
+      onConfirm: () => purge(topic.name),
+    });
+  };
+
   const content = (
     <AnimatePresence>
       {topic && (
@@ -173,48 +207,75 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
                   Queue Status
                 </h3>
                 <div className="bg-kb-card border border-kb-border divide-y divide-kb-border">
-                  {Object.entries(topic.queue_stats || {}).map(
-                    ([key, value]) => (
-                      <div
-                        key={key}
-                        className="flex justify-between items-center p-4"
-                      >
-                        <span className="text-[10px] font-black uppercase tracking-widest text-kb-subtext">
-                          {key}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-kb-neon animate-pulse" />
-                          <span className="text-sm font-black">{value}</span>
-                        </div>
+                  {[
+                    {
+                      label: "Pending",
+                      value: topic.queue_pending,
+                      color: "bg-kb-neon",
+                    },
+                    {
+                      label: "Delayed",
+                      value: topic.queue_delayed,
+                      color: "bg-kb-warning",
+                    },
+                    {
+                      label: "Processing",
+                      value: topic.queue_processing,
+                      color: "bg-kb-info",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex justify-between items-center p-4"
+                    >
+                      <span className="text-[10px] font-black uppercase tracking-widest text-kb-subtext">
+                        {item.label}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`h-1.5 w-1.5 rounded-full ${item.color} animate-pulse`}
+                        />
+                        <span className="text-sm font-black">{item.value}</span>
                       </div>
-                    ),
-                  )}
+                    </div>
+                  ))}
                 </div>
               </section>
             </div>
 
             {/* Actions Footer */}
-            <footer className="p-6 border-t border-kb-border bg-kb-card space-y-3">
-              <button
-                type="button"
-                className="w-full flex items-center justify-center gap-2 py-3 bg-kb-neon text-black font-black text-xs uppercase italic hover:brightness-110 transition-all"
-              >
-                <Pause size={16} />
-                Pause Processing
-              </button>
+            <footer className="p-6 border-t border-kb-border bg-kb-card">
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  className="flex items-center justify-center gap-2 py-3 border border-kb-border font-black text-[10px] uppercase hover:bg-kb-text/5 transition-colors"
+                  disabled={isPausing || isResuming}
+                  onClick={handlePauseToggle}
+                  className={`flex items-center justify-center gap-2 py-3 font-black text-[10px] uppercase italic transition-all ${
+                    topic.paused
+                      ? "bg-kb-text text-black hover:bg-kb-text/90"
+                      : "bg-kb-neon text-black hover:brightness-110"
+                  } disabled:opacity-50`}
                 >
-                  Clear Stats
+                  {topic.paused ? (
+                    <>
+                      <Play size={14} fill="currentColor" />
+                      Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause size={14} />
+                      Pause
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
-                  className="flex items-center justify-center gap-2 py-3 border border-red-500/30 text-red-500 font-black text-[10px] uppercase hover:bg-red-500/10 transition-colors"
+                  disabled={isPurging}
+                  onClick={handlePurge}
+                  className="flex items-center justify-center gap-2 py-3 border border-red-500/30 text-red-500 font-black text-[10px] uppercase hover:bg-red-500/10 transition-colors disabled:opacity-50"
                 >
                   <Trash2 size={14} />
-                  Purge Topic
+                  Purge
                 </button>
               </div>
             </footer>

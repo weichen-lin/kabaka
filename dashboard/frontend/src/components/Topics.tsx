@@ -94,10 +94,12 @@ export const Topics = () => {
               >
                 <div className="p-6 flex flex-wrap lg:flex-nowrap items-center gap-8">
                   <div className="flex items-center gap-4 w-full lg:w-1/3">
-                    <div className="w-10 h-10 bg-kb-bg border border-kb-border flex items-center justify-center group-hover:border-kb-neon transition-colors">
+                    <div
+                      className={`w-10 h-10 bg-kb-bg border border-kb-border flex items-center justify-center group-hover:border-kb-neon transition-colors ${topic.paused ? "border-kb-warning/30" : ""}`}
+                    >
                       <Database
                         size={18}
-                        className="text-kb-subtext group-hover:text-kb-neon"
+                        className={`text-kb-subtext group-hover:text-kb-neon ${topic.paused ? "text-kb-warning" : ""}`}
                       />
                     </div>
                     <div>
@@ -105,7 +107,10 @@ export const Topics = () => {
                         {topic.name}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
-                        <StatusTag label="Active" status="ok" />
+                        <StatusTag
+                          label={topic.paused ? "Paused" : "Active"}
+                          status={topic.paused ? "paused" : "ok"}
+                        />
                         <span className="text-[9px] font-bold text-kb-subtext uppercase tracking-tighter">
                           v1.2.4
                         </span>
@@ -143,7 +148,7 @@ export const Topics = () => {
                         Pending
                       </div>
                       <div className="text-sm font-black text-kb-warning">
-                        {topic.queue_stats?.pending ?? 0}
+                        {topic.queue_pending ?? 0}
                       </div>
                     </div>
                   </div>
@@ -152,15 +157,9 @@ export const Topics = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTopic(topic.name)}
-                      className="px-4 py-2 border border-kb-border text-[9px] font-black uppercase tracking-widest hover:bg-kb-text/5 transition-colors"
+                      className="px-6 py-2 border border-kb-border text-[9px] font-black uppercase tracking-widest hover:bg-kb-neon hover:text-black hover:border-kb-neon transition-all"
                     >
                       Manage
-                    </button>
-                    <button
-                      type="button"
-                      className="px-4 py-2 bg-kb-border text-[9px] font-black uppercase tracking-widest hover:bg-red-500/20 hover:text-red-500 hover:border-red-500/50 transition-all border border-transparent"
-                    >
-                      Purge
                     </button>
                   </div>
                 </div>

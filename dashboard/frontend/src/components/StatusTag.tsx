@@ -3,12 +3,13 @@ export const StatusTag = ({
   status,
 }: {
   label: string;
-  status: "ok" | "err" | "warn";
+  status: "ok" | "err" | "warn" | "paused";
 }) => {
   const styles = {
     ok: "text-kb-neon border-kb-neon/30 bg-kb-neon/5",
     err: "text-red-500 border-red-500/30 bg-red-500/5",
     warn: "text-kb-warning border-kb-warning/30 bg-kb-warning/5",
+    paused: "text-kb-subtext border-kb-subtext/30 bg-kb-subtext/5",
   };
   return (
     <div

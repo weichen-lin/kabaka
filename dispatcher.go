@@ -63,6 +63,17 @@ func (k *Kabaka) dispatch() {
 				continue
 			}
 
+			// Handle Paused Topic: Re-queue task to delayed queue to avoid tight loop
+			if topic.Paused.Load() {
+				finishCtx, cancel := context.WithTimeout(context.Background(), k.brokerTimeout)
+				// Re-push to delayed queue to wait (e.g. 1s) before trying again
+				k.broker.PushDelayed(finishCtx, task.Message, 1*time.Second)
+				// Finish (remove from processing) current task to allow other tasks or topics to be picked up
+				k.broker.Finish(finishCtx, task.Message, nil, 0)
+				cancel()
+				continue
+			}
+
 			job := k.buildJob(topic, task.Message)
 
 			// Acquire a semaphore slot; block if all workers are busy

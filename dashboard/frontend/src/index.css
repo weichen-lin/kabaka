@@ -105,6 +105,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 /* Industrial Texture - Subtler for Claude style */
 .cyber-grid {
   background-image:

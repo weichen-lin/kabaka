@@ -2,6 +2,7 @@ package kabaka
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,6 +17,9 @@ type Topic struct {
 	retryDelay     time.Duration
 	processTimeout time.Duration
 	schema         string
+
+	// State
+	Paused atomic.Bool
 
 	// Metrics
 	stats *TopicStats

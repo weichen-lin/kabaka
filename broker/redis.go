@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -430,6 +431,54 @@ func (b *RedisBroker) TopicQueueStats(ctx context.Context, internalName string) 
 		Delayed:    delayed,
 		Processing: processing,
 	}, nil
+}
+
+func (b *RedisBroker) Purge(ctx context.Context, internalName string) error {
+	queueKey := b.prefix + "main_queue"
+	delayedKey := b.prefix + "delayed_queue"
+	msgKey := b.prefix + "messages"
+	timeoutKey := b.prefix + "timeouts"
+	statsKey := b.prefix + "stats:" + internalName
+
+	// 1. Get all message IDs in the queues to find which ones belong to this topic
+	// This is slightly expensive for Redis but accurate
+
+	// Helper to find and remove IDs
+	purgeFromList := func(key string) {
+		ids, _ := b.client.LRange(ctx, key, 0, -1).Result()
+		for _, id := range ids {
+			data, _ := b.client.HGet(ctx, msgKey, id).Result()
+			if data != "" {
+				if strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", internalName)) {
+					b.client.LRem(ctx, key, 0, id)
+					b.client.HDel(ctx, msgKey, id)
+					b.client.HDel(ctx, timeoutKey, id)
+				}
+			}
+		}
+	}
+
+	purgeFromZSet := func(key string) {
+		ids, _ := b.client.ZRange(ctx, key, 0, -1).Result()
+		for _, id := range ids {
+			data, _ := b.client.HGet(ctx, msgKey, id).Result()
+			if data != "" {
+				if strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", internalName)) {
+					b.client.ZRem(ctx, key, id)
+					b.client.HDel(ctx, msgKey, id)
+					b.client.HDel(ctx, timeoutKey, id)
+				}
+			}
+		}
+	}
+
+	purgeFromList(queueKey)
+	purgeFromZSet(delayedKey)
+
+	// Reset counters
+	b.client.HSet(ctx, statsKey, "pending", 0, "delayed", 0)
+
+	return nil
 }
 
 func (b *RedisBroker) Close() error {

@@ -39,7 +39,8 @@ type TopicSnapshot struct {
 	RetryTotal      int64  `json:"retry_total"`
 	AvgDurationMs   int64  `json:"avg_duration"` // Milliseconds
 	SuccessRate     string `json:"success_rate"`
-	QueuePending    int64  `json:"queue_pending"`    // messages waiting in queue
+	Paused          bool   `json:"paused"`
+	QueuePending    int64  `json:"queue_pending"` // messages waiting in queue
 	QueueDelayed    int64  `json:"queue_delayed"`    // messages in delayed queue
 	QueueProcessing int64  `json:"queue_processing"` // messages currently being processed
 
@@ -94,6 +95,7 @@ func (k *Kabaka) GetStats() KabakaStats {
 			RetryTotal:     topic.stats.RetryTotal.Load(),
 			AvgDurationMs:  topic.stats.AvgDuration().Milliseconds(),
 			SuccessRate:    fmt.Sprintf("%.2f", successRate),
+			Paused:         topic.Paused.Load(),
 
 			// Configuration
 			MaxRetries:     topic.maxRetries,

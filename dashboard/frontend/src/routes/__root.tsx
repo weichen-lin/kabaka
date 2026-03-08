@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useWebSocket } from "../api/queries";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { Header } from "../components/Header";
 import { Sidebar } from "../components/Sidebar";
 import { useStore } from "../store/useStore";
@@ -43,6 +44,8 @@ function RootLayout() {
           </div>
         </main>
       </div>
+
+      <ConfirmModal />
     </div>
   );
 }

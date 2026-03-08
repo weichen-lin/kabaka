@@ -33,5 +33,6 @@ type Broker interface {
 	// Stats and management
 	QueueStats(ctx context.Context) (QueueStats, error)
 	TopicQueueStats(ctx context.Context, internalName string) (QueueStats, error)
+	Purge(ctx context.Context, internalName string) error
 	Close() error
 }
