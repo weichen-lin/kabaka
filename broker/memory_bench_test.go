@@ -1,4 +1,4 @@
-package broker
+package broker_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/weichen-lin/kabaka"
+	"github.com/weichen-lin/kabaka/broker"
 )
 
 // BenchmarkMetrics collects detailed performance metrics
@@ -103,7 +104,7 @@ func (l *silentLogger) Error(msg *kabaka.LogMessage) {}
 func setupTestKabaka(b *testing.B, workers int, metrics *BenchmarkMetrics) *kabaka.Kabaka {
 	b.Helper()
 
-	memBroker := NewMemoryBroker()
+	memBroker := broker.NewMemoryBroker()
 
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(memBroker),
@@ -112,7 +113,7 @@ func setupTestKabaka(b *testing.B, workers int, metrics *BenchmarkMetrics) *kaba
 	)
 
 	// Create a test topic with a simple handler
-	err := k.CreateTopic("test-topic", func(ctx context.Context, msg *kabaka.Message) error {
+	err := k.CreateTopic("test-topic", func(ctx context.Context, msg *broker.Message) error {
 		// Simulate lightweight processing
 		time.Sleep(10 * time.Millisecond)
 
@@ -137,7 +138,7 @@ func setupTestKabaka(b *testing.B, workers int, metrics *BenchmarkMetrics) *kaba
 func setupTestKabakaFast(b *testing.B, workers int, metrics *BenchmarkMetrics) *kabaka.Kabaka {
 	b.Helper()
 
-	memBroker := NewMemoryBroker()
+	memBroker := broker.NewMemoryBroker()
 
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(memBroker),
@@ -146,7 +147,7 @@ func setupTestKabakaFast(b *testing.B, workers int, metrics *BenchmarkMetrics) *
 	)
 
 	// Create a test topic with a FAST handler (1ms instead of 10ms)
-	err := k.CreateTopic("test-topic", func(ctx context.Context, msg *kabaka.Message) error {
+	err := k.CreateTopic("test-topic", func(ctx context.Context, msg *broker.Message) error {
 		// Simulate very lightweight processing for high-load tests
 		time.Sleep(1 * time.Millisecond)
 
@@ -424,7 +425,7 @@ func benchmarkMultiTopic(b *testing.B, topicCount int) {
 		b.Logf("Increased workers to %d for %d topics", workers, topicCount)
 	}
 
-	memBroker := NewMemoryBroker()
+	memBroker := broker.NewMemoryBroker()
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(memBroker),
 		kabaka.WithMaxWorkers(workers),
@@ -437,7 +438,7 @@ func benchmarkMultiTopic(b *testing.B, topicCount int) {
 	for i := 0; i < topicCount; i++ {
 		topicName := generateTopicName(i)
 		topicNames[i] = topicName
-		err := k.CreateTopic(topicName, func(ctx context.Context, msg *kabaka.Message) error {
+		err := k.CreateTopic(topicName, func(ctx context.Context, msg *broker.Message) error {
 			time.Sleep(10 * time.Millisecond)
 			metrics.SuccessfulMessages.Add(1)
 			latency := time.Since(msg.CreatedAt)
@@ -496,7 +497,7 @@ func generateTopicName(index int) string {
 func setupTestKabakaWithHandler(b *testing.B, workers int, handler kabaka.HandleFunc, metrics *BenchmarkMetrics) *kabaka.Kabaka {
 	b.Helper()
 
-	memBroker := NewMemoryBroker()
+	memBroker := broker.NewMemoryBroker()
 
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(memBroker),
@@ -532,7 +533,7 @@ func BenchmarkHandlerLatency_Slow(b *testing.B) {
 func benchmarkHandlerLatency(b *testing.B, processingTime time.Duration, label string) {
 	metrics := newBenchmarkMetrics()
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		// Simulate processing
 		time.Sleep(processingTime)
 
@@ -579,7 +580,7 @@ func BenchmarkHandlerLatency_Mixed(b *testing.B) {
 	metrics := newBenchmarkMetrics()
 	var counter atomic.Int64
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		// Alternate between fast, medium, and slow
 		count := counter.Add(1)
 		var processingTime time.Duration
@@ -635,7 +636,7 @@ func BenchmarkHandlerLatency_Mixed(b *testing.B) {
 func BenchmarkHandler_DatabaseAccess(b *testing.B) {
 	metrics := newBenchmarkMetrics()
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		// Simulate database query (5-15ms)
 		simulateDBQuery := time.Duration(5+len(msg.Value)%10) * time.Millisecond
 		time.Sleep(simulateDBQuery)
@@ -681,7 +682,7 @@ func BenchmarkHandler_DatabaseAccess(b *testing.B) {
 func BenchmarkHandler_HTTPRequest(b *testing.B) {
 	metrics := newBenchmarkMetrics()
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		// Simulate HTTP request (20-100ms)
 		simulateHTTPCall := time.Duration(20+len(msg.Value)%80) * time.Millisecond
 		time.Sleep(simulateHTTPCall)
@@ -746,7 +747,7 @@ func BenchmarkDelayedMessages_LongDelay(b *testing.B) {
 func benchmarkDelayedMessages(b *testing.B, delay time.Duration, messageCount int) {
 	metrics := newBenchmarkMetrics()
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		time.Sleep(10 * time.Millisecond)
 		metrics.SuccessfulMessages.Add(1)
 		latency := time.Since(msg.CreatedAt)
@@ -788,7 +789,7 @@ func benchmarkDelayedMessages(b *testing.B, delay time.Duration, messageCount in
 func BenchmarkMixedDelayed_50Percent(b *testing.B) {
 	metrics := newBenchmarkMetrics()
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		time.Sleep(10 * time.Millisecond)
 		metrics.SuccessfulMessages.Add(1)
 		latency := time.Since(msg.CreatedAt)
@@ -858,7 +859,7 @@ func benchmarkRetry(b *testing.B, failurePercent int, messageCount int) {
 	metrics := newBenchmarkMetrics()
 	var counter atomic.Int64
 
-	handler := func(ctx context.Context, msg *kabaka.Message) error {
+	handler := func(ctx context.Context, msg *broker.Message) error {
 		time.Sleep(10 * time.Millisecond)
 
 		// Simulate failure based on percentage
@@ -874,7 +875,7 @@ func benchmarkRetry(b *testing.B, failurePercent int, messageCount int) {
 		return nil
 	}
 
-	memBroker := NewMemoryBroker()
+	memBroker := broker.NewMemoryBroker()
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(memBroker),
 		kabaka.WithMaxWorkers(100),

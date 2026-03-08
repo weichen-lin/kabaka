@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/weichen-lin/kabaka"
 )
 
 type delayedMessage struct {
-	message    *kabaka.Message
+	message    *Message
 	scheduleAt time.Time
 	index      int // index in the heap
 }
@@ -46,19 +44,19 @@ func (h *delayedHeap) Pop() interface{} {
 }
 
 type processingEntry struct {
-	message   *kabaka.Message
+	message   *Message
 	startTime time.Time
 }
 
 // MemoryBroker is an in-memory implementation of the Broker interface.
 type MemoryBroker struct {
 	mu         sync.RWMutex
-	metadata   map[string]*kabaka.TopicMetadata // topic name -> metadata
-	messages   *list.List                       // pending messages queue (FIFO)
-	delayed    *delayedHeap                     // delayed messages (min-heap by scheduleAt)
-	processing map[string]*processingEntry      // message ID -> processing info
+	metadata   map[string]*TopicMetadata   // topic name -> metadata
+	messages   *list.List                  // pending messages queue (FIFO)
+	delayed    *delayedHeap                // delayed messages (min-heap by scheduleAt)
+	processing map[string]*processingEntry // message ID -> processing info
 
-	watchCh        chan *kabaka.Task
+	watchCh        chan *Task
 	notifyCh       chan struct{} // notification channel for new messages
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -82,11 +80,11 @@ func NewMemoryBroker() *MemoryBroker {
 	heap.Init(h)
 
 	mb := &MemoryBroker{
-		metadata:                make(map[string]*kabaka.TopicMetadata),
+		metadata:                make(map[string]*TopicMetadata),
 		messages:                list.New(),
 		delayed:                 h,
 		processing:              make(map[string]*processingEntry),
-		watchCh:                 make(chan *kabaka.Task, 100),
+		watchCh:                 make(chan *Task, 100),
 		notifyCh:                make(chan struct{}, 1),
 		ctx:                     ctx,
 		cancel:                  cancel,
@@ -110,7 +108,7 @@ func (mb *MemoryBroker) isClosed() bool {
 }
 
 // Register registers a new topic with metadata.
-func (mb *MemoryBroker) Register(ctx context.Context, meta *kabaka.TopicMetadata) error {
+func (mb *MemoryBroker) Register(ctx context.Context, meta *TopicMetadata) error {
 	mb.mu.Lock()
 	defer mb.mu.Unlock()
 
@@ -162,7 +160,7 @@ func (mb *MemoryBroker) UnregisterAndCleanup(ctx context.Context, topic string) 
 	var next *list.Element
 	for elem := mb.messages.Front(); elem != nil; elem = next {
 		next = elem.Next()
-		msg := elem.Value.(*kabaka.Message)
+		msg := elem.Value.(*Message)
 		if msg.InternalName == internalName {
 			mb.messages.Remove(elem)
 		}
@@ -189,7 +187,7 @@ func (mb *MemoryBroker) UnregisterAndCleanup(ctx context.Context, topic string) 
 }
 
 // GetTopicMetadata retrieves metadata for a topic.
-func (mb *MemoryBroker) GetTopicMetadata(ctx context.Context, name string) (*kabaka.TopicMetadata, error) {
+func (mb *MemoryBroker) GetTopicMetadata(ctx context.Context, name string) (*TopicMetadata, error) {
 	mb.mu.RLock()
 	defer mb.mu.RUnlock()
 
@@ -202,7 +200,7 @@ func (mb *MemoryBroker) GetTopicMetadata(ctx context.Context, name string) (*kab
 }
 
 // Push adds a message to the pending queue.
-func (mb *MemoryBroker) Push(ctx context.Context, msg *kabaka.Message) error {
+func (mb *MemoryBroker) Push(ctx context.Context, msg *Message) error {
 	mb.mu.Lock()
 	if mb.isClosed() {
 		mb.mu.Unlock()
@@ -221,7 +219,7 @@ func (mb *MemoryBroker) Push(ctx context.Context, msg *kabaka.Message) error {
 }
 
 // PushDelayed adds a message to the delayed queue.
-func (mb *MemoryBroker) PushDelayed(ctx context.Context, msg *kabaka.Message, delay time.Duration) error {
+func (mb *MemoryBroker) PushDelayed(ctx context.Context, msg *Message, delay time.Duration) error {
 	mb.mu.Lock()
 	defer mb.mu.Unlock()
 
@@ -241,7 +239,7 @@ func (mb *MemoryBroker) PushDelayed(ctx context.Context, msg *kabaka.Message, de
 // Watch returns a channel that receives tasks from the queue.
 // This method can be called multiple times and will return the same channel.
 // The dispatcher is started only once.
-func (mb *MemoryBroker) Watch(ctx context.Context) (<-chan *kabaka.Task, error) {
+func (mb *MemoryBroker) Watch(ctx context.Context) (<-chan *Task, error) {
 	mb.mu.Lock()
 	if mb.isClosed() {
 		mb.mu.Unlock()
@@ -259,7 +257,7 @@ func (mb *MemoryBroker) Watch(ctx context.Context) (<-chan *kabaka.Task, error) 
 }
 
 // Finish marks a message as processed and removes it from processing queue.
-func (mb *MemoryBroker) Finish(ctx context.Context, msg *kabaka.Message, processErr error, duration time.Duration) error {
+func (mb *MemoryBroker) Finish(ctx context.Context, msg *Message, processErr error, duration time.Duration) error {
 	mb.mu.Lock()
 	defer mb.mu.Unlock()
 
@@ -276,11 +274,11 @@ func (mb *MemoryBroker) Finish(ctx context.Context, msg *kabaka.Message, process
 }
 
 // QueueStats returns overall queue statistics.
-func (mb *MemoryBroker) QueueStats(ctx context.Context) (kabaka.QueueStats, error) {
+func (mb *MemoryBroker) QueueStats(ctx context.Context) (QueueStats, error) {
 	mb.mu.RLock()
 	defer mb.mu.RUnlock()
 
-	return kabaka.QueueStats{
+	return QueueStats{
 		Pending:    int64(mb.messages.Len()),
 		Delayed:    int64(mb.delayed.Len()),
 		Processing: int64(len(mb.processing)),
@@ -288,15 +286,15 @@ func (mb *MemoryBroker) QueueStats(ctx context.Context) (kabaka.QueueStats, erro
 }
 
 // TopicQueueStats returns queue statistics for a specific topic.
-func (mb *MemoryBroker) TopicQueueStats(ctx context.Context, internalName string) (kabaka.QueueStats, error) {
+func (mb *MemoryBroker) TopicQueueStats(ctx context.Context, internalName string) (QueueStats, error) {
 	mb.mu.RLock()
 	defer mb.mu.RUnlock()
 
-	stats := kabaka.QueueStats{}
+	stats := QueueStats{}
 
 	// Count pending messages
 	for elem := mb.messages.Front(); elem != nil; elem = elem.Next() {
-		msg := elem.Value.(*kabaka.Message)
+		msg := elem.Value.(*Message)
 		if msg.InternalName == internalName {
 			stats.Pending++
 		}
@@ -332,7 +330,7 @@ func (mb *MemoryBroker) Purge(ctx context.Context, internalName string) error {
 	var next *list.Element
 	for elem := mb.messages.Front(); elem != nil; elem = next {
 		next = elem.Next()
-		msg := elem.Value.(*kabaka.Message)
+		msg := elem.Value.(*Message)
 		if msg.InternalName == internalName {
 			mb.messages.Remove(elem)
 		}
@@ -397,7 +395,7 @@ func (mb *MemoryBroker) dispatchNext() {
 
 	// Pop first message
 	elem := mb.messages.Front()
-	msg := mb.messages.Remove(elem).(*kabaka.Message)
+	msg := mb.messages.Remove(elem).(*Message)
 
 	// Mark as processing with timestamp
 	mb.processing[msg.Id] = &processingEntry{
@@ -406,7 +404,7 @@ func (mb *MemoryBroker) dispatchNext() {
 	}
 
 	// Create task before releasing lock
-	task := &kabaka.Task{
+	task := &Task{
 		InternalName: msg.InternalName,
 		Message:      msg,
 	}
@@ -485,7 +483,7 @@ func (mb *MemoryBroker) cleanupStaleProcessing() {
 		case <-ticker.C:
 			mb.mu.Lock()
 			now := time.Now()
-			staleMessages := make([]*kabaka.Message, 0)
+			staleMessages := make([]*Message, 0)
 
 			// Find stale messages
 			for msgID, entry := range mb.processing {

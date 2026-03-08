@@ -22,7 +22,7 @@ func main() {
 	)
 
 	// 2. Heavy Handler: Takes 1-3 seconds to process
-	k.CreateTopic("heavy.task", func(ctx context.Context, msg *kabaka.Message) error {
+	k.CreateTopic("heavy.task", func(ctx context.Context, msg *broker.Message) error {
 		// Long processing time to observe Active Workers
 		delay := time.Duration(1000+rand.Intn(2000)) * time.Millisecond
 		time.Sleep(delay)
@@ -34,7 +34,7 @@ func main() {
 	})
 
 	// 3. Fast Handler: Small noise
-	k.CreateTopic("fast.event", func(ctx context.Context, msg *kabaka.Message) error {
+	k.CreateTopic("fast.event", func(ctx context.Context, msg *broker.Message) error {
 		delay := time.Duration(50+rand.Intn(200)) * time.Millisecond
 		time.Sleep(delay)
 		if rand.Float32() < 0.05 {
@@ -44,7 +44,7 @@ func main() {
 	})
 
 	// 4. Unstable Handler: High error rate, No retries for observation
-	k.CreateTopic("unstable.api", func(ctx context.Context, msg *kabaka.Message) error {
+	k.CreateTopic("unstable.api", func(ctx context.Context, msg *broker.Message) error {
 		delay := time.Duration(300+rand.Intn(1200)) * time.Millisecond
 		time.Sleep(delay)
 		if rand.Float32() < 0.4 {
@@ -54,7 +54,7 @@ func main() {
 	}, kabaka.WithMaxRetries(0))
 
 	// 5. Cleanup Handler: Long-running background task
-	k.CreateTopic("cleanup.worker", func(ctx context.Context, msg *kabaka.Message) error {
+	k.CreateTopic("cleanup.worker", func(ctx context.Context, msg *broker.Message) error {
 		delay := time.Duration(5000+rand.Intn(5000)) * time.Millisecond
 		time.Sleep(delay)
 		return nil

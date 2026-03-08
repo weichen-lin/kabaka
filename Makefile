@@ -54,7 +54,7 @@ release: dash-build
 
 dash: dash-build
 	@echo "🚀 Starting Kabaka Dashboard..."
-	@go run dashboard/examples/test_app.go
+	@go run examples/test_app.go
 
 clean:
 	@rm -f kabaka-test

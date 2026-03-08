@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/weichen-lin/kabaka"
 )
 
 type RedisBroker struct {
@@ -23,7 +22,7 @@ type RedisBroker struct {
 	notifyOnce  sync.Once
 	moverOnce   sync.Once
 	anyNotifyCh chan struct{}
-	watchCh     chan *kabaka.Task
+	watchCh     chan *Task
 }
 
 type RedisBrokerOptions struct {
@@ -50,7 +49,7 @@ func NewRedisBroker(addr string, password string, db int, opts ...RedisBrokerOpt
 		cancel:      cancel,
 		pollers:     make(map[string]chan struct{}),
 		anyNotifyCh: make(chan struct{}, 1),
-		watchCh:     make(chan *kabaka.Task, 100),
+		watchCh:     make(chan *Task, 100),
 	}
 }
 
@@ -68,7 +67,7 @@ func NewRedisBrokerWithClient(client *redis.Client, opts ...RedisBrokerOptions) 
 		cancel:      cancel,
 		pollers:     make(map[string]chan struct{}),
 		anyNotifyCh: make(chan struct{}, 1),
-		watchCh:     make(chan *kabaka.Task, 100),
+		watchCh:     make(chan *Task, 100),
 	}
 }
 
@@ -151,7 +150,7 @@ var redeliverTimeoutScript = redis.NewScript(`
 	return #ids
 `)
 
-func (b *RedisBroker) Push(ctx context.Context, msg *kabaka.Message) error {
+func (b *RedisBroker) Push(ctx context.Context, msg *Message) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal failed: %w", err)
@@ -176,7 +175,7 @@ func (b *RedisBroker) Push(ctx context.Context, msg *kabaka.Message) error {
 	return err
 }
 
-func (b *RedisBroker) PushDelayed(ctx context.Context, msg *kabaka.Message, delay time.Duration) error {
+func (b *RedisBroker) PushDelayed(ctx context.Context, msg *Message, delay time.Duration) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal failed: %w", err)
@@ -202,7 +201,7 @@ func (b *RedisBroker) PushDelayed(ctx context.Context, msg *kabaka.Message, dela
 	return err
 }
 
-func (b *RedisBroker) Watch(ctx context.Context) (<-chan *kabaka.Task, error) {
+func (b *RedisBroker) Watch(ctx context.Context) (<-chan *Task, error) {
 	b.moverOnce.Do(func() {
 		go b.listenMover()
 		go b.startPoller()
@@ -211,7 +210,7 @@ func (b *RedisBroker) Watch(ctx context.Context) (<-chan *kabaka.Task, error) {
 	return b.watchCh, nil
 }
 
-func (b *RedisBroker) Finish(ctx context.Context, msg *kabaka.Message, processErr error, duration time.Duration) error {
+func (b *RedisBroker) Finish(ctx context.Context, msg *Message, processErr error, duration time.Duration) error {
 	processingKey := b.prefix + "processing_queue"
 	msgKey := b.prefix + "messages"
 	timeoutKey := b.prefix + "timeouts"
@@ -276,7 +275,7 @@ func (b *RedisBroker) listenMover() {
 			// Fetch message data and dispatch
 			data, err := b.client.HGet(b.ctx, msgKey, id).Result()
 			if err == nil {
-				var msg kabaka.Message
+				var msg Message
 				if err := json.Unmarshal([]byte(data), &msg); err == nil {
 					// Update counters: pending -> processing
 					statsKey := b.prefix + "stats:" + msg.InternalName
@@ -286,7 +285,7 @@ func (b *RedisBroker) listenMover() {
 					pipe.Exec(b.ctx)
 
 					select {
-					case b.watchCh <- &kabaka.Task{InternalName: msg.InternalName, Message: &msg}:
+					case b.watchCh <- &Task{InternalName: msg.InternalName, Message: &msg}:
 					case <-b.ctx.Done():
 						return
 					}
@@ -346,7 +345,7 @@ func (b *RedisBroker) startTimeoutScanner() {
 	}
 }
 
-func (b *RedisBroker) Register(ctx context.Context, meta *kabaka.TopicMetadata) error {
+func (b *RedisBroker) Register(ctx context.Context, meta *TopicMetadata) error {
 	key := b.prefix + "meta:topics"
 	data, err := json.Marshal(meta)
 	if err != nil {
@@ -365,42 +364,42 @@ func (b *RedisBroker) UnregisterAndCleanup(ctx context.Context, topic string) er
 	return b.Unregister(ctx, topic)
 }
 
-func (b *RedisBroker) GetTopicMetadata(ctx context.Context, name string) (*kabaka.TopicMetadata, error) {
+func (b *RedisBroker) GetTopicMetadata(ctx context.Context, name string) (*TopicMetadata, error) {
 	key := b.prefix + "meta:topics"
 	data, err := b.client.HGet(ctx, key, name).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var meta kabaka.TopicMetadata
+	var meta TopicMetadata
 	if err := json.Unmarshal([]byte(data), &meta); err != nil {
 		return nil, fmt.Errorf("unmarshal metadata failed: %w", err)
 	}
 	return &meta, nil
 }
 
-func (b *RedisBroker) QueueStats(ctx context.Context) (kabaka.QueueStats, error) {
+func (b *RedisBroker) QueueStats(ctx context.Context) (QueueStats, error) {
 	pipe := b.client.Pipeline()
 	pendingCmd := pipe.LLen(ctx, b.prefix+"main_queue")
 	delayedCmd := pipe.ZCard(ctx, b.prefix+"delayed_queue")
 	processingCmd := pipe.ZCard(ctx, b.prefix+"processing_queue")
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return kabaka.QueueStats{}, err
+		return QueueStats{}, err
 	}
 
-	return kabaka.QueueStats{
+	return QueueStats{
 		Pending:    pendingCmd.Val(),
 		Delayed:    delayedCmd.Val(),
 		Processing: processingCmd.Val(),
 	}, nil
 }
 
-func (b *RedisBroker) TopicQueueStats(ctx context.Context, internalName string) (kabaka.QueueStats, error) {
+func (b *RedisBroker) TopicQueueStats(ctx context.Context, internalName string) (QueueStats, error) {
 	statsKey := b.prefix + "stats:" + internalName
 	result, err := b.client.HMGet(ctx, statsKey, "pending", "delayed", "processing").Result()
 	if err != nil && err != redis.Nil {
-		return kabaka.QueueStats{}, err
+		return QueueStats{}, err
 	}
 
 	parseInt := func(val interface{}) int64 {
@@ -426,7 +425,7 @@ func (b *RedisBroker) TopicQueueStats(ctx context.Context, internalName string) 
 		processing = parseInt(result[2])
 	}
 
-	return kabaka.QueueStats{
+	return QueueStats{
 		Pending:    pending,
 		Delayed:    delayed,
 		Processing: processing,

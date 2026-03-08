@@ -3,6 +3,8 @@ package kabaka
 import (
 	"context"
 	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
 )
 
 // Publish publishes a message to the specified topic.
@@ -15,7 +17,7 @@ func (k *Kabaka) Publish(topicName string, message []byte) error {
 		return ErrTopicNotFound
 	}
 
-	msg := &Message{
+	msg := &broker.Message{
 		Id:             NewUUID(),
 		InternalName:   meta.InternalName,
 		Value:          message,
@@ -59,7 +61,7 @@ func (k *Kabaka) PublishDelayed(topicName string, message []byte, delay time.Dur
 		return ErrTopicNotFound
 	}
 
-	msg := &Message{
+	msg := &broker.Message{
 		Id:             NewUUID(),
 		InternalName:   meta.InternalName,
 		Value:          message,

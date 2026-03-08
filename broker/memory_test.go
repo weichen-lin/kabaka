@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/weichen-lin/kabaka"
 )
 
 func TestNewMemoryBroker(t *testing.T) {
@@ -38,7 +36,7 @@ func TestRegisterAndUnregister(t *testing.T) {
 	defer broker.Close()
 
 	ctx := context.Background()
-	meta := &kabaka.TopicMetadata{
+	meta := &TopicMetadata{
 		Name:         "test-topic",
 		InternalName: "internal-test",
 	}
@@ -83,7 +81,7 @@ func TestPushAndWatch(t *testing.T) {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "msg-1",
 		InternalName: "test-topic",
 		Value:        []byte("test message"),
@@ -118,7 +116,7 @@ func TestPushDelayed(t *testing.T) {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "msg-delayed",
 		InternalName: "test-topic",
 		Value:        []byte("delayed message"),
@@ -157,7 +155,7 @@ func TestFinish(t *testing.T) {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "msg-finish",
 		InternalName: "test-topic",
 		Value:        []byte("test"),
@@ -168,7 +166,7 @@ func TestFinish(t *testing.T) {
 		t.Fatalf("Failed to push message: %v", err)
 	}
 
-	var receivedMsg *kabaka.Message
+	var receivedMsg *Message
 	select {
 	case task := <-taskCh:
 		receivedMsg = task.Message
@@ -197,7 +195,7 @@ func TestQueueStats(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		msg := &kabaka.Message{
+		msg := &Message{
 			Id:           string(rune('a' + i)),
 			InternalName: "test-topic",
 			Value:        []byte("test"),
@@ -208,7 +206,7 @@ func TestQueueStats(t *testing.T) {
 		}
 	}
 
-	delayedMsg := &kabaka.Message{
+	delayedMsg := &Message{
 		Id:           "delayed",
 		InternalName: "test-topic",
 		Value:        []byte("delayed"),
@@ -250,12 +248,12 @@ func TestClose(t *testing.T) {
 		t.Error("Expected broker to be closed")
 	}
 
-	err = broker.Push(ctx, &kabaka.Message{Id: "test"})
+	err = broker.Push(ctx, &Message{Id: "test"})
 	if err == nil {
 		t.Error("Expected error when pushing to closed broker")
 	}
 
-	err = broker.Register(ctx, &kabaka.TopicMetadata{Name: "test"})
+	err = broker.Register(ctx, &TopicMetadata{Name: "test"})
 	if err == nil {
 		t.Error("Expected error when registering to closed broker")
 	}
@@ -272,7 +270,7 @@ func TestCleanupStaleProcessing(t *testing.T) {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:             "stale-msg",
 		InternalName:   "test-topic",
 		Value:          []byte("test"),
@@ -312,7 +310,7 @@ func TestUnregisterAndCleanup(t *testing.T) {
 
 	ctx := context.Background()
 
-	meta := &kabaka.TopicMetadata{
+	meta := &TopicMetadata{
 		Name:         "cleanup-topic",
 		InternalName: "internal-cleanup",
 	}
@@ -322,7 +320,7 @@ func TestUnregisterAndCleanup(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		msg := &kabaka.Message{
+		msg := &Message{
 			Id:           "cleanup-pending-" + string(rune('a'+i)),
 			InternalName: "internal-cleanup",
 			Value:        []byte("test"),
@@ -333,7 +331,7 @@ func TestUnregisterAndCleanup(t *testing.T) {
 		}
 	}
 
-	delayedMsg := &kabaka.Message{
+	delayedMsg := &Message{
 		Id:           "cleanup-delayed",
 		InternalName: "internal-cleanup",
 		Value:        []byte("delayed"),
@@ -377,7 +375,7 @@ func TestTopicQueueStats(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 2; i++ {
-		msg := &kabaka.Message{
+		msg := &Message{
 			Id:           "topic1-" + string(rune('a'+i)),
 			InternalName: "topic-1",
 			Value:        []byte("test"),
@@ -389,7 +387,7 @@ func TestTopicQueueStats(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		msg := &kabaka.Message{
+		msg := &Message{
 			Id:           "topic2-" + string(rune('a'+i)),
 			InternalName: "topic-2",
 			Value:        []byte("test"),
@@ -400,7 +398,7 @@ func TestTopicQueueStats(t *testing.T) {
 		}
 	}
 
-	delayedMsg := &kabaka.Message{
+	delayedMsg := &Message{
 		Id:           "topic1-delayed",
 		InternalName: "topic-1",
 		Value:        []byte("delayed"),
@@ -429,7 +427,7 @@ func TestFinishNonExistentMessage(t *testing.T) {
 
 	ctx := context.Background()
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "non-existent",
 		InternalName: "test-topic",
 		Value:        []byte("test"),
@@ -459,7 +457,7 @@ func TestPushDelayedClosedBroker(t *testing.T) {
 
 	ctx := context.Background()
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "test",
 		InternalName: "test-topic",
 		Value:        []byte("test"),
@@ -504,7 +502,7 @@ func TestMultipleDelayedMessages(t *testing.T) {
 	}
 
 	for _, m := range messages {
-		msg := &kabaka.Message{
+		msg := &Message{
 			Id:           m.id,
 			InternalName: "test-topic",
 			Value:        []byte("test"),
@@ -539,7 +537,7 @@ func TestRegisterClosedBroker(t *testing.T) {
 
 	ctx := context.Background()
 
-	meta := &kabaka.TopicMetadata{
+	meta := &TopicMetadata{
 		Name:         "test-topic",
 		InternalName: "internal-test",
 	}
@@ -554,7 +552,7 @@ func TestUnregisterClosedBroker(t *testing.T) {
 	broker := NewMemoryBroker()
 	ctx := context.Background()
 
-	meta := &kabaka.TopicMetadata{
+	meta := &TopicMetadata{
 		Name:         "test-topic",
 		InternalName: "internal-test",
 	}
@@ -604,7 +602,7 @@ func TestProcessingWithQueueStats(t *testing.T) {
 		t.Fatalf("Failed to start watching: %v", err)
 	}
 
-	msg := &kabaka.Message{
+	msg := &Message{
 		Id:           "processing-msg",
 		InternalName: "test-topic",
 		Value:        []byte("test"),

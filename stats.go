@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
 )
 
 // TopicStats holds runtime metrics for a single topic.
@@ -28,7 +30,7 @@ func (s *TopicStats) AvgDuration() time.Duration {
 type KabakaStats struct {
 	ActiveJobs int64                    `json:"active_jobs"`
 	IdleSlots  int64                    `json:"idle_slots"`
-	Queue      QueueStats               `json:"queue"`
+	Queue      broker.QueueStats        `json:"queue"`
 	Topics     map[string]TopicSnapshot `json:"topics"`
 }
 
@@ -40,7 +42,7 @@ type TopicSnapshot struct {
 	AvgDurationMs   int64  `json:"avg_duration"` // Milliseconds
 	SuccessRate     string `json:"success_rate"`
 	Paused          bool   `json:"paused"`
-	QueuePending    int64  `json:"queue_pending"` // messages waiting in queue
+	QueuePending    int64  `json:"queue_pending"`    // messages waiting in queue
 	QueueDelayed    int64  `json:"queue_delayed"`    // messages in delayed queue
 	QueueProcessing int64  `json:"queue_processing"` // messages currently being processed
 

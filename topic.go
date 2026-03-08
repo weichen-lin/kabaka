@@ -4,12 +4,14 @@ import (
 	"context"
 	"sync/atomic"
 	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
 )
 
 type Topic struct {
 	Name         string
 	InternalName string
-	broker       Broker
+	broker       broker.Broker
 	handler      HandleFunc
 
 	// Configuration
@@ -27,11 +29,11 @@ type Topic struct {
 
 type Option func(*Topic)
 
-func newTopic(name, internalName string, broker Broker, handler HandleFunc, options ...Option) *Topic {
+func newTopic(name, internalName string, b broker.Broker, handler HandleFunc, options ...Option) *Topic {
 	t := &Topic{
 		Name:           name,
 		InternalName:   internalName,
-		broker:         broker,
+		broker:         b,
 		handler:        handler,
 		maxRetries:     3,
 		retryDelay:     1 * time.Second,
@@ -71,8 +73,8 @@ func WithSchema(schema string) Option {
 }
 
 // ToMetadata creates a TopicMetadata from the Topic configuration.
-func (t *Topic) ToMetadata() *TopicMetadata {
-	return &TopicMetadata{
+func (t *Topic) ToMetadata() *broker.TopicMetadata {
+	return &broker.TopicMetadata{
 		Name:           t.Name,
 		InternalName:   t.InternalName,
 		CreatedAt:      time.Now(),

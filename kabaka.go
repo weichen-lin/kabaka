@@ -5,12 +5,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
 )
 
-type HandleFunc func(context.Context, *Message) error
+type HandleFunc func(context.Context, *broker.Message) error
 
 type metaCacheEntry struct {
-	metadata  *TopicMetadata
+	metadata  *broker.TopicMetadata
 	expiresAt time.Time
 }
 
@@ -18,7 +20,7 @@ type metaCacheEntry struct {
 type Kabaka struct {
 	mu     sync.RWMutex
 	topics map[string]*Topic
-	broker Broker
+	broker broker.Broker
 	logger Logger
 
 	// Metadata cache for lightweight publishing
@@ -48,8 +50,9 @@ func NewKabaka(options ...KabakaOption) *Kabaka {
 		metaCache:     make(map[string]*metaCacheEntry),
 		metaCacheTTL:  5 * time.Minute, // Default metadata cache TTL
 		logger:        &DefaultLogger{},
-		maxWorkers:    10,              // Default worker count
-		brokerTimeout: 2 * time.Second, // Default broker timeout
+		maxWorkers:    10,                       // Default worker count
+		broker:        broker.NewMemoryBroker(), // Default in-memory broker
+		brokerTimeout: 2 * time.Second,          // Default broker timeout
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -77,7 +80,7 @@ func (k *Kabaka) Close() error {
 }
 
 // getMetadataFromCache retrieves metadata from cache if available and not expired.
-func (k *Kabaka) getMetadataFromCache(topicName string) (*TopicMetadata, bool) {
+func (k *Kabaka) getMetadataFromCache(topicName string) (*broker.TopicMetadata, bool) {
 	k.mu.RLock()
 	entry, exists := k.metaCache[topicName]
 	k.mu.RUnlock()
@@ -90,7 +93,7 @@ func (k *Kabaka) getMetadataFromCache(topicName string) (*TopicMetadata, bool) {
 }
 
 // setMetadataCache stores metadata in cache with a TTL.
-func (k *Kabaka) setMetadataCache(topicName string, meta *TopicMetadata, ttl time.Duration) {
+func (k *Kabaka) setMetadataCache(topicName string, meta *broker.TopicMetadata, ttl time.Duration) {
 	k.mu.Lock()
 	k.metaCache[topicName] = &metaCacheEntry{
 		metadata:  meta,
@@ -100,7 +103,7 @@ func (k *Kabaka) setMetadataCache(topicName string, meta *TopicMetadata, ttl tim
 }
 
 // getOrFetchMetadata tries to get metadata from cache, otherwise fetches from broker.
-func (k *Kabaka) getOrFetchMetadata(ctx context.Context, topicName string) (*TopicMetadata, error) {
+func (k *Kabaka) getOrFetchMetadata(ctx context.Context, topicName string) (*broker.TopicMetadata, error) {
 	// Try cache first
 	if meta, ok := k.getMetadataFromCache(topicName); ok {
 		return meta, nil

@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
 )
 
 // Start begins the message dispatcher.
@@ -95,7 +97,7 @@ func (k *Kabaka) dispatch() {
 	}
 }
 
-func (k *Kabaka) buildJob(topic *Topic, msg *Message) func() {
+func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 	processTimeout := topic.processTimeout
 	handler := topic.handler
 	retryDelay := topic.retryDelay

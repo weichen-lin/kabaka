@@ -1,11 +1,15 @@
 package kabaka
 
-import "time"
+import (
+	"time"
+
+	"github.com/weichen-lin/kabaka/broker"
+)
 
 // WithBroker sets the broker for Kabaka.
-func WithBroker(broker Broker) KabakaOption {
+func WithBroker(b broker.Broker) KabakaOption {
 	return func(k *Kabaka) {
-		k.broker = broker
+		k.broker = b
 	}
 }
 
