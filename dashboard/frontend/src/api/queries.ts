@@ -1,48 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useStore } from "../store/useStore";
+import type { Stats, Topic } from "../types";
 
 const API_BASE = "/api/v1";
-
-export interface Topic {
-  name: string;
-  internal_name: string;
-  processed_total: number;
-  failed_total: number;
-  retry_total: number;
-  avg_duration: number;
-  success_rate: string;
-  paused: boolean;
-  max_retries: number;
-  retry_delay: number;
-  process_timeout: number;
-  queue_pending: number;
-  queue_delayed: number;
-  queue_processing: number;
-  schema?: string;
-  schema_type?: string;
-}
-
-export interface Stats {
-  stats: {
-    active_jobs: number;
-    idle_slots: number;
-    queue: {
-      pending: number;
-      delayed: number;
-      processing: number;
-    };
-    topics: Record<string, Topic>;
-  };
-  system: {
-    goroutines: number;
-    memory: string;
-    go_version: string;
-    num_cpu: number;
-  };
-  timestamp: number;
-  uptime: number;
-}
 
 export const useStats = () => {
   return useQuery<Stats>({
@@ -154,6 +115,7 @@ export const useTopicActions = () => {
 export const useWebSocket = () => {
   const queryClient = useQueryClient();
   const { setWSStatus } = useStore();
+  const reconnectAttempts = useRef(0);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -168,13 +130,14 @@ export const useWebSocket = () => {
 
       socket.onopen = () => {
         setWSStatus("connected");
+        reconnectAttempts.current = 0;
       };
 
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           if (message.type === "stats") {
-            const statsData = message.data;
+            const statsData = message.data as Stats;
 
             queryClient.setQueryData(["stats"], (old: Stats | undefined) => {
               if (!old) return statsData;
@@ -185,17 +148,17 @@ export const useWebSocket = () => {
             });
 
             if (statsData.stats?.topics) {
-              const topicsArray = Object.entries(statsData.stats.topics).map(
-                ([name, topic]) => {
-                  const topicData = {
-                    ...(topic as Topic),
+              const topicsArray = Object.entries(statsData.stats.topics)
+                .map(([name, topic]) => {
+                  const topicData: Topic = {
+                    ...topic,
                     name: name,
                   };
-                  // 同步更新「詳細資料」緩存，讓個別 Topic 頁面也能即時跳動
+                  // Sync specific topic detail cache
                   queryClient.setQueryData(["topics", name], topicData);
                   return topicData;
-                },
-              );
+                })
+                .sort((a, b) => a.name.localeCompare(b.name));
               queryClient.setQueryData(["topics"], { topics: topicsArray });
             }
           }
@@ -206,7 +169,12 @@ export const useWebSocket = () => {
 
       socket.onclose = () => {
         setWSStatus("disconnected");
-        reconnectTimer = setTimeout(connect, 3000);
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, up to 30s
+        const backoff = Math.min(1000 * 2 ** reconnectAttempts.current, 30000);
+        reconnectAttempts.current += 1;
+
+        reconnectTimer = setTimeout(connect, backoff);
       };
 
       socket.onerror = () => {

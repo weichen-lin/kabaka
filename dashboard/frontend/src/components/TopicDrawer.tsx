@@ -1,34 +1,17 @@
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  Activity,
-  Clock,
-  Database,
-  Pause,
-  Play,
-  RotateCcw,
-  Settings,
-  ShieldCheck,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Activity, Pause, Play, Settings, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { type Topic, useTopicActions } from "../api/queries";
+import { useTopicActions } from "../api/queries";
 import { useStore } from "../store/useStore";
+import type { Topic } from "../types";
+import { TopicConfigDetails } from "./TopicConfigDetails";
+import { TopicQueueStatus } from "./TopicQueueStatus";
+import { TopicStatsGrid } from "./TopicStatsGrid";
 
 interface TopicDrawerProps {
   topic: Topic | null;
   onClose: () => void;
 }
-
-const formatDuration = (ms: number) => {
-  if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${minutes.toFixed(1)}m`;
-  const hours = minutes / 60;
-  return `${hours.toFixed(1)}h`;
-};
 
 export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
   const { pause, resume, purge, isPausing, isResuming, isPurging } =
@@ -50,13 +33,17 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
       title: "Purge_Topic_Queue",
       description: `Target Topic: ${topic.name}`,
       message: (
-        <>
-          This action will{" "}
-          <span className="font-bold text-kb-text">PERMANENTLY DELETE</span>{" "}
-          all:
-          {"\n"}• Pending tasks in the main queue
-          {"\n"}• Delayed tasks scheduled for the future
-        </>
+        <div className="space-y-2">
+          <p>
+            This action will{" "}
+            <span className="font-bold text-kb-text">PERMANENTLY DELETE</span>{" "}
+            all:
+          </p>
+          <ul className="list-disc list-inside text-sm opacity-80">
+            <li>Pending tasks in the main queue</li>
+            <li>Delayed tasks scheduled for the future</li>
+          </ul>
+        </div>
       ),
       variant: "danger",
       onConfirm: () => purge(topic.name),
@@ -73,7 +60,7 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            className="absolute inset-0 bg-black/80 backdrop-blur-md pointer-events-auto"
           />
 
           {/* Panel */}
@@ -81,202 +68,120 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="relative w-full max-w-md h-full bg-kb-bg border-l border-kb-border shadow-2xl overflow-hidden flex flex-col pointer-events-auto"
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="relative w-full max-w-md h-full bg-kb-bg border-l border-kb-border shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col pointer-events-auto"
           >
-            {/* Header */}
-            <header className="p-6 border-b border-kb-border bg-kb-card flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-kb-bg border border-kb-neon/30 flex items-center justify-center">
-                  <Settings className="text-kb-neon" size={20} />
+            {/* Cyber Header with Glow */}
+            <header className="p-8 border-b border-kb-border bg-kb-card relative">
+              <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-kb-neon to-transparent opacity-50" />
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <motion.div
+                    whileHover={{ rotate: 90 }}
+                    className="w-12 h-12 bg-kb-bg border border-kb-neon/30 flex items-center justify-center shadow-[0_0_15px_rgba(0,255,159,0.1)]"
+                  >
+                    <Settings className="text-kb-neon" size={24} />
+                  </motion.div>
+                  <div>
+                    <h2 className="text-2xl font-black italic tracking-tighter uppercase leading-none text-kb-text">
+                      Manage Topic
+                    </h2>
+                    <p className="text-[10px] text-kb-neon font-black tracking-[0.4em] mt-2 uppercase flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-kb-neon animate-pulse rounded-full" />
+                      {topic.name}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-black italic tracking-tight uppercase leading-none">
-                    Manage Topic
-                  </h2>
-                  <p className="text-[10px] text-kb-neon font-black tracking-widest mt-1">
-                    {topic.name}
-                  </p>
-                </div>
+                <motion.button
+                  whileHover={{ scale: 1.1, rotate: 90 }}
+                  whileTap={{ scale: 0.9 }}
+                  type="button"
+                  onClick={onClose}
+                  className="p-3 bg-kb-bg border border-kb-border hover:border-kb-neon hover:text-kb-neon transition-colors"
+                >
+                  <X size={20} />
+                </motion.button>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-2 hover:bg-kb-neon hover:text-black transition-colors"
-              >
-                <X size={20} />
-              </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
               {/* Quick Stats Grid */}
               <section className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                  <Activity size={12} /> Live Metrics
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {topic &&
-                    [
-                      {
-                        label: "Processed",
-                        value: topic.processed_total.toLocaleString(),
-                        color: "text-kb-text",
-                      },
-                      {
-                        label: "Failed",
-                        value: topic.failed_total.toLocaleString(),
-                        color: "text-red-500",
-                      },
-                      {
-                        label: "Avg Duration",
-                        value: formatDuration(topic.avg_duration),
-                        color: "text-kb-info",
-                      },
-                      {
-                        label: "Success Rate",
-                        value: `${topic.success_rate}%`,
-                        color: "text-kb-neon",
-                      },
-                    ].map((stat) => (
-                      <div
-                        key={stat.label}
-                        className="bg-kb-card border border-kb-border p-4"
-                      >
-                        <div className="text-[9px] font-black text-kb-subtext uppercase tracking-widest mb-1">
-                          {stat.label}
-                        </div>
-                        <div className={`text-xl font-black ${stat.color}`}>
-                          {stat.value}
-                        </div>
-                      </div>
-                    ))}
+                <div className="flex justify-between items-end">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-kb-subtext flex items-center gap-2">
+                    <Activity size={12} className="text-kb-neon" /> Live Metrics
+                  </h3>
+                  <div className="h-[1px] flex-1 bg-kb-border ml-4 opacity-30" />
                 </div>
+                <TopicStatsGrid topic={topic} />
               </section>
 
               {/* Configuration Details */}
               <section className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                  <Settings size={12} /> Configuration
-                </h3>
-                <div className="space-y-2">
-                  {[
-                    {
-                      label: "Internal Name",
-                      value: topic.internal_name,
-                      icon: <Database size={14} />,
-                    },
-                    {
-                      label: "Max Retries",
-                      value: `${topic.max_retries} attempts`,
-                      icon: <RotateCcw size={14} />,
-                    },
-                    {
-                      label: "Retry Delay",
-                      value: `${topic.retry_delay}s`,
-                      icon: <Clock size={14} />,
-                    },
-                    {
-                      label: "Process Timeout",
-                      value: `${topic.process_timeout}s`,
-                      icon: <ShieldCheck size={14} />,
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-center justify-between p-3 bg-kb-card/50 border border-kb-border group hover:border-kb-neon/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="text-kb-subtext group-hover:text-kb-neon transition-colors">
-                          {item.icon}
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-kb-subtext">
-                          {item.label}
-                        </span>
-                      </div>
-                      <span className="text-xs font-bold text-kb-text font-mono truncate max-w-[180px]">
-                        {item.value}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex justify-between items-end">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-kb-subtext flex items-center gap-2">
+                    <Settings size={12} className="text-kb-neon" />{" "}
+                    Configuration
+                  </h3>
+                  <div className="h-[1px] flex-1 bg-kb-border ml-4 opacity-30" />
                 </div>
+                <TopicConfigDetails topic={topic} />
               </section>
 
               {/* Queue Information */}
               <section className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext">
-                  Queue Status
-                </h3>
-                <div className="bg-kb-card border border-kb-border divide-y divide-kb-border">
-                  {[
-                    {
-                      label: "Pending",
-                      value: topic.queue_pending,
-                      color: "bg-kb-neon",
-                    },
-                    {
-                      label: "Delayed",
-                      value: topic.queue_delayed,
-                      color: "bg-kb-warning",
-                    },
-                    {
-                      label: "Processing",
-                      value: topic.queue_processing,
-                      color: "bg-kb-info",
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex justify-between items-center p-4"
-                    >
-                      <span className="text-[10px] font-black uppercase tracking-widest text-kb-subtext">
-                        {item.label}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`h-1.5 w-1.5 rounded-full ${item.color} animate-pulse`}
-                        />
-                        <span className="text-sm font-black">{item.value}</span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex justify-between items-end">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-kb-subtext">
+                    Queue Status_Map
+                  </h3>
+                  <div className="h-[1px] flex-1 bg-kb-border ml-4 opacity-30" />
                 </div>
+                <TopicQueueStatus topic={topic} />
               </section>
             </div>
 
             {/* Actions Footer */}
-            <footer className="p-6 border-t border-kb-border bg-kb-card">
-              <div className="grid grid-cols-2 gap-3">
-                <button
+            <footer className="p-8 border-t border-kb-border bg-kb-card">
+              <div className="grid grid-cols-2 gap-4">
+                <motion.button
+                  whileHover={{ scale: 1.02, brightness: 1.1 }}
+                  whileTap={{ scale: 0.98 }}
                   type="button"
                   disabled={isPausing || isResuming}
                   onClick={handlePauseToggle}
-                  className={`flex items-center justify-center gap-2 py-3 font-black text-[10px] uppercase italic transition-all ${
+                  className={`group relative flex items-center justify-center gap-3 py-4 font-black text-[11px] uppercase italic transition-all overflow-hidden ${
                     topic.paused
-                      ? "bg-kb-text text-black hover:bg-kb-text/90"
-                      : "bg-kb-neon text-black hover:brightness-110"
+                      ? "bg-kb-text text-black"
+                      : "bg-kb-neon text-black shadow-[0_0_20px_rgba(0,255,159,0.2)]"
                   } disabled:opacity-50`}
                 >
+                  <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500 skew-x-12" />
                   {topic.paused ? (
                     <>
-                      <Play size={14} fill="currentColor" />
-                      Resume
+                      <Play size={16} fill="currentColor" />
+                      Resume_Service
                     </>
                   ) : (
                     <>
-                      <Pause size={14} />
-                      Pause
+                      <Pause size={16} fill="currentColor" />
+                      Pause_Service
                     </>
                   )}
-                </button>
-                <button
+                </motion.button>
+                <motion.button
+                  whileHover={{
+                    scale: 1.02,
+                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  }}
+                  whileTap={{ scale: 0.98 }}
                   type="button"
                   disabled={isPurging}
                   onClick={handlePurge}
-                  className="flex items-center justify-center gap-2 py-3 border border-red-500/30 text-red-500 font-black text-[10px] uppercase hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  className="flex items-center justify-center gap-3 py-4 border border-red-500/30 text-red-500 font-black text-[11px] uppercase hover:border-red-500 transition-colors disabled:opacity-50"
                 >
-                  <Trash2 size={14} />
-                  Purge
-                </button>
+                  <Trash2 size={16} />
+                  Purge_Queue
+                </motion.button>
               </div>
             </footer>
           </motion.div>

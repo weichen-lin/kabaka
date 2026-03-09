@@ -1,27 +1,19 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
-interface ConfirmModalState {
-  isOpen: boolean;
-  title: string;
-  description?: string;
-  message: string | React.ReactNode;
-  onConfirm: () => void;
-  variant: "danger" | "warning";
-}
+import type { ConfirmModalState, WSStatus } from "../types";
 
 interface UIState {
   theme: "dark" | "light";
   sidebarOpen: boolean;
   activeTopic: string | null;
   activeView: "dash" | "topics" | "workers" | "stats";
-  wsStatus: "connected" | "disconnected" | "connecting";
+  wsStatus: WSStatus;
   confirmModal: ConfirmModalState;
   toggleTheme: () => void;
   toggleSidebar: () => void;
   setActiveTopic: (topic: string | null) => void;
   setActiveView: (view: "dash" | "topics" | "workers" | "stats") => void;
-  setWSStatus: (status: "connected" | "disconnected" | "connecting") => void;
+  setWSStatus: (status: WSStatus) => void;
   openConfirm: (opts: Omit<ConfirmModalState, "isOpen">) => void;
   closeConfirm: () => void;
 }

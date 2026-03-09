@@ -17,7 +17,9 @@ export const Sidebar = () => {
       animate={{ width: sidebarOpen ? 240 : 64 }}
       className="border-r border-kb-border bg-kb-card/80 backdrop-blur-md flex flex-col relative z-20"
     >
-      <div className="h-16 border-b border-kb-border flex items-center px-6 shrink-0 overflow-hidden">
+      <div
+        className={`h-16 border-b border-kb-border flex items-center shrink-0 overflow-hidden transition-all ${sidebarOpen ? "px-6" : "px-3 justify-center"}`}
+      >
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 flex items-center justify-center shrink-0">
             <img
@@ -43,7 +45,7 @@ export const Sidebar = () => {
           <Link
             key={item.to}
             to={item.to}
-            className={`w-full flex items-center gap-4 px-6 py-3.5 group transition-all text-left relative [&.active]:bg-kb-neon/5`}
+            className={`w-full flex items-center ${sidebarOpen ? "px-6 gap-4" : "px-0 justify-center"} py-3.5 group transition-all text-left relative [&.active]:bg-kb-neon/5`}
           >
             {/* Active indicator using TanStack Router's active class */}
             <div className="absolute left-0 w-1 h-6 bg-kb-neon opacity-0 group-[.active]:opacity-100 transition-opacity" />
@@ -63,7 +65,9 @@ export const Sidebar = () => {
         ))}
       </nav>
 
-      <div className="p-5 border-t border-kb-border text-[9px] text-kb-subtext uppercase font-bold overflow-hidden">
+      <div
+        className={`p-5 border-t border-kb-border text-[9px] text-kb-subtext uppercase font-bold overflow-hidden transition-all ${!sidebarOpen && "text-center"}`}
+      >
         {sidebarOpen ? "© 2026 WEI CHEN LIN" : "v1.0"}
       </div>
     </motion.aside>
