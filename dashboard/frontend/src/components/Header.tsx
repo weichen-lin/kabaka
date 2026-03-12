@@ -30,7 +30,7 @@ export const Header = () => {
           <span className="text-[9px] font-black uppercase tracking-widest text-kb-subtext">
             {wsStatus === "connected" ? (
               <span className="flex items-center gap-1">
-                <Wifi size={10} /> Live_Sync
+                <Wifi size={10} /> Live Sync
               </span>
             ) : (
               <span className="flex items-center gap-1">

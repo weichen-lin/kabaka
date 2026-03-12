@@ -29,7 +29,7 @@ export const SchemaForm = ({
   } catch (_e) {
     return (
       <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-500 rounded-sm font-black text-xs uppercase italic tracking-widest">
-        CRITICAL_ERROR: INVALID_JSON_SCHEMA_FORMAT
+        Invalid Schema Format
       </div>
     );
   }

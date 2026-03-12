@@ -14,7 +14,7 @@ function WorkersFleet() {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-kb-neon animate-pulse font-black uppercase tracking-[0.5em] italic text-sm">
-          Initializing_Fleet_Map...
+          Initializing node fleet...
         </div>
       </div>
     );
@@ -190,7 +190,7 @@ function WorkersFleet() {
             </div>
             <div>
               <div className="text-sm font-black text-kb-text uppercase">
-                Fleet_Optimal
+                Fleet Optimal
               </div>
               <div className="text-[9px] font-bold text-kb-neon uppercase tracking-tighter">
                 All Systems Operational
@@ -208,15 +208,15 @@ function WorkersFleet() {
           </div>
           <div className="space-y-1 font-mono text-[10px]">
             <div className="flex justify-between">
-              <span className="text-kb-subtext">GO_VERSION</span>
+              <span className="text-kb-subtext">Go Version</span>
               <span className="text-kb-text">{data?.system.go_version}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-kb-subtext">GOROUTINES</span>
+              <span className="text-kb-subtext">Goroutines</span>
               <span className="text-kb-text">{data?.system.goroutines}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-kb-subtext">MEM_USAGE</span>
+              <span className="text-kb-subtext">Memory Usage</span>
               <span className="text-kb-text">{data?.system.memory}</span>
             </div>
           </div>

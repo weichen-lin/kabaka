@@ -11,19 +11,19 @@ export const TopicQueueStatus = ({ topic }: TopicQueueStatusProps) => {
       label: "Pending",
       value: topic.queue_pending,
       color: "bg-kb-neon",
-      sub: "QUEUE_WAIT",
+      sub: "Queue Wait",
     },
     {
       label: "Delayed",
       value: topic.queue_delayed,
       color: "bg-kb-warning",
-      sub: "SCHED_DELAY",
+      sub: "Scheduled Delay",
     },
     {
       label: "Processing",
       value: topic.queue_processing,
       color: "bg-kb-info",
-      sub: "ACTIVE_JOB",
+      sub: "Active Jobs",
     },
   ];
 

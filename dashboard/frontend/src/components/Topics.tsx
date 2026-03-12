@@ -86,7 +86,7 @@ export const Topics = () => {
             <div className="py-20 flex flex-col items-center justify-center gap-4">
               <div className="w-10 h-10 border-2 border-kb-neon border-t-transparent animate-spin" />
               <div className="text-kb-neon font-black uppercase tracking-[0.6em] text-[10px]">
-                Syncing_Registry...
+                Syncing Registry...
               </div>
             </div>
           ) : (
@@ -147,7 +147,7 @@ export const Topics = () => {
                       </div>
                       <div className="space-y-1.5 border-l border-kb-border/30 pl-4 group-hover:border-kb-neon/30 transition-colors">
                         <div className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                          Success_Rate
+                          Success Rate
                         </div>
                         <div className="text-base font-black text-kb-neon font-mono">
                           {topic.success_rate}%
@@ -155,7 +155,7 @@ export const Topics = () => {
                       </div>
                       <div className="space-y-1.5 border-l border-kb-border/30 pl-4 group-hover:border-kb-neon/30 transition-colors">
                         <div className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                          Avg_Duration
+                          Avg Duration
                         </div>
                         <div className="text-base font-black text-kb-info font-mono">
                           {formatDuration(topic.avg_duration)}
@@ -200,7 +200,7 @@ export const Topics = () => {
               ))}
               {filteredTopics.length === 0 && (
                 <div className="py-20 text-center text-kb-subtext uppercase text-[12px] font-black tracking-[0.5em] italic opacity-30 border-2 border-dashed border-kb-border">
-                  NULL_DATA: No topics matching "{filter}"
+                  No topics matching "{filter}"
                 </div>
               )}
             </AnimatePresence>

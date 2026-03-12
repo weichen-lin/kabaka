@@ -12,25 +12,25 @@ export const TopicStatsGrid = ({ topic }: TopicStatsGridProps) => {
       label: "Processed",
       value: topic.processed_total.toLocaleString(),
       color: "text-kb-text",
-      sub: "TOTAL_JOBS",
+      sub: "Total Jobs",
     },
     {
       label: "Failed",
       value: topic.failed_total.toLocaleString(),
       color: "text-red-500",
-      sub: "ERR_COUNT",
+      sub: "Error Count",
     },
     {
       label: "Avg Duration",
       value: formatDuration(topic.avg_duration),
       color: "text-kb-info",
-      sub: "LATENCY_MS",
+      sub: "Latency MS",
     },
     {
       label: "Success Rate",
       value: `${topic.success_rate}%`,
       color: "text-kb-neon",
-      sub: "THR_PUT",
+      sub: "Throughput",
     },
   ];
 

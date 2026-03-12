@@ -47,7 +47,7 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
     if (!topic) return;
     const topicName = topic.name;
     openConfirm({
-      title: "Purge_Topic_Queue",
+      title: "Purge Topic Queue",
       description: `Target Topic: ${topicName}`,
       message: (
         <div className="space-y-2">
@@ -153,7 +153,7 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
               <section className="space-y-4">
                 <div className="flex justify-between items-end">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-kb-subtext">
-                    Queue Status_Map
+                    Queue Status Map
                   </h3>
                   <div className="h-[1px] flex-1 bg-kb-border ml-4 opacity-30" />
                 </div>
@@ -189,8 +189,8 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
                     : isResuming
                       ? "Resuming..."
                       : topic.paused
-                        ? "Resume_Service"
-                        : "Pause_Service"}
+                        ? "Resume Service"
+                        : "Pause Service"}
                 </motion.button>
                 <motion.button
                   whileHover={{
@@ -208,7 +208,7 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
                   ) : (
                     <Trash2 size={16} />
                   )}
-                  {isPurging ? "Purging..." : "Purge_Queue"}
+                  {isPurging ? "Purging..." : "Purge Queue"}
                 </motion.button>
               </div>
             </footer>

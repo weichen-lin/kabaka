@@ -20,7 +20,7 @@ export const Dashboard = () => {
         <div className="relative">
           <div className="w-16 h-16 border-4 border-kb-neon border-t-transparent animate-spin" />
           <div className="absolute inset-0 flex items-center justify-center text-[8px] font-black text-kb-neon animate-pulse">
-            LOADING
+            Loading
           </div>
         </div>
       </div>

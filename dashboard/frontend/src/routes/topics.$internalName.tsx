@@ -73,7 +73,7 @@ function TopicDetail() {
         </div>
         <div className="space-y-1 text-center">
           <p className="text-kb-neon font-black uppercase tracking-[0.5em] text-[10px] animate-pulse">
-            Resolving_Internal_Registry...
+            Resolving Registry...
           </p>
           <p className="text-kb-subtext font-bold uppercase tracking-widest text-[8px] opacity-50">
             Mapping {internalName} to registry record
@@ -92,7 +92,7 @@ function TopicDetail() {
           </div>
         </div>
         <h2 className="text-4xl font-black text-red-500 uppercase italic tracking-tighter mb-2">
-          404: Topic_Not_Found
+          404: Topic Not Found
         </h2>
         <p className="text-kb-subtext font-bold uppercase tracking-widest text-[10px] mb-8">
           The requested topic internal identifier ({internalName}) does not
@@ -128,7 +128,7 @@ function TopicDetail() {
   const handlePurge = () => {
     if (!topicName) return;
     openConfirm({
-      title: "Purge_Topic_Queue",
+      title: "Purge Topic Queue",
       description: `Target Topic: ${topicName}`,
       message: (
         <>
@@ -376,7 +376,7 @@ function TopicDetail() {
                     size={14}
                     className={activeTab === "publish" ? "animate-pulse" : ""}
                   />
-                  <span>Publish_Message</span>
+                  <span>Publish Message</span>
                   {activeTab === "publish" && (
                     <motion.div
                       layoutId="active_tab_glitch"
@@ -394,7 +394,7 @@ function TopicDetail() {
                   }`}
                 >
                   <Code size={14} />
-                  <span>Actual_Schema</span>
+                  <span>Topic Schema</span>
                   {activeTab === "schema" && (
                     <motion.div
                       layoutId="active_tab_glitch"
@@ -409,14 +409,14 @@ function TopicDetail() {
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-kb-neon rounded-full animate-pulse shadow-[0_0_5px_rgba(0,255,159,0.5)]" />
                     <span className="text-[9px] font-black text-kb-neon uppercase tracking-widest">
-                      Schema_Valid
+                      Schema Ready
                     </span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-kb-subtext rounded-full" />
                     <span className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                      No_Schema
+                      Schemaless Mode
                     </span>
                   </div>
                 )}
@@ -438,7 +438,7 @@ function TopicDetail() {
                       <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
                         <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
                           <Settings size={12} className="text-kb-neon" />{" "}
-                          Input_Designer
+                          Message Designer
                         </h4>
                       </div>
                       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-kb-bg/40">
@@ -453,7 +453,7 @@ function TopicDetail() {
                           <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 opacity-50">
                             <Code size={32} className="text-kb-subtext" />
                             <p className="text-[10px] font-black uppercase tracking-widest">
-                              Schema_Less_Mode_Active
+                              Schemaless Publishing
                             </p>
                           </div>
                         )}
@@ -465,7 +465,7 @@ function TopicDetail() {
                       <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
                         <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
                           <FileJson size={12} className="text-kb-neon" />{" "}
-                          Payload_Inspector
+                          Payload Inspector
                         </h4>
                         {currentPayload && (
                           <button
@@ -478,7 +478,7 @@ function TopicDetail() {
                             }}
                             className="text-[9px] font-black uppercase text-kb-neon hover:underline"
                           >
-                            Copy_JSON
+                            Copy JSON
                           </button>
                         )}
                       </div>
@@ -499,7 +499,7 @@ function TopicDetail() {
                           {!currentPayload && (
                             <div className="h-full flex items-center justify-center opacity-20 pointer-events-none">
                               <p className="text-[10px] font-black uppercase tracking-[0.8em] animate-pulse">
-                                Waiting_For_Data...
+                                Waiting for data...
                               </p>
                             </div>
                           )}
@@ -517,8 +517,8 @@ function TopicDetail() {
                   >
                     <div className="p-4 border-b border-kb-border bg-kb-bg/20">
                       <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                        <Code size={12} className="text-kb-neon" />{" "}
-                        JSON_Schema_Source
+                        <Code size={12} className="text-kb-neon" /> Schema
+                        Source
                       </h4>
                     </div>
                     <div className="flex-1 p-6 overflow-hidden bg-kb-bg/40 relative">

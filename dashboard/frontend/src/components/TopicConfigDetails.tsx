@@ -11,25 +11,25 @@ export const TopicConfigDetails = ({ topic }: TopicConfigDetailsProps) => {
       label: "Internal Name",
       value: topic.internal_name,
       icon: <Database size={14} />,
-      sub: "INTERNAL_ID",
+      sub: "Internal ID",
     },
     {
       label: "Max Retries",
       value: `${topic.max_retries} attempts`,
       icon: <RotateCcw size={14} />,
-      sub: "RETRY_LIMIT",
+      sub: "Retry Limit",
     },
     {
       label: "Retry Delay",
       value: `${topic.retry_delay}s`,
       icon: <Clock size={14} />,
-      sub: "RETRY_WAIT",
+      sub: "Retry Wait",
     },
     {
       label: "Process Timeout",
       value: `${topic.process_timeout}s`,
       icon: <ShieldCheck size={14} />,
-      sub: "TIMEOUT_SEC",
+      sub: "Timeout Seconds",
     },
   ];
 
