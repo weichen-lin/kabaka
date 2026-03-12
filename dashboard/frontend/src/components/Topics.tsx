@@ -102,7 +102,7 @@ export const Topics = () => {
                   className="bg-kb-card border border-kb-border group hover:border-kb-neon/50 transition-all relative overflow-hidden"
                 >
                   {/* Subtle Background Text */}
-                  <div className="absolute -right-4 -top-6 text-[60px] font-black text-white/[0.02] italic pointer-events-none select-none uppercase tracking-tighter">
+                  <div className="absolute -right-4 -top-6 text-[60px] font-black text-kb-text/5 italic pointer-events-none select-none uppercase tracking-tighter">
                     {topic.name}
                   </div>
 

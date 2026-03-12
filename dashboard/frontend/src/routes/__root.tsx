@@ -47,7 +47,34 @@ function RootLayout() {
       </div>
 
       <ConfirmModal />
-      <Toaster position="top-right" theme={theme} richColors closeButton />
+      <Toaster
+        position="top-right"
+        theme={theme}
+        icons={{
+          success: null,
+          info: null,
+          warning: null,
+          error: null,
+          loading: (
+            <div className="w-4 h-4 border-2 border-kb-neon border-t-transparent animate-spin mr-2" />
+          ),
+        }}
+        toastOptions={{
+          unstyled: true,
+          classNames: {
+            toast:
+              "group w-[350px] flex flex-col justify-center bg-kb-card border border-kb-border p-4 shadow-2xl transition-all duration-300 pointer-events-auto select-none",
+            title:
+              "text-[11px] font-black uppercase tracking-[0.2em] font-mono leading-tight",
+            description:
+              "text-[10px] text-kb-subtext font-mono mt-1 leading-relaxed",
+            success: "border-l-4 border-l-kb-neon",
+            error: "border-l-4 border-l-destructive",
+            warning: "border-l-4 border-l-kb-warning",
+            info: "border-l-4 border-l-kb-info",
+          },
+        }}
+      />
     </div>
   );
 }
