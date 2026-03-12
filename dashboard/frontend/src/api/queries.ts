@@ -11,7 +11,8 @@ export const useStats = () => {
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/stats`);
       if (!res.ok) throw new Error("Network response was not ok");
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
   });
 };
@@ -22,7 +23,8 @@ export const useTopics = () => {
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/topics`);
       if (!res.ok) throw new Error("Network response was not ok");
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
   });
 };
@@ -33,7 +35,8 @@ export const useTopicDetail = (name: string | null) => {
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/topics/${name}`);
       if (!res.ok) throw new Error("Topic not found");
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
     enabled: !!name,
   });
@@ -47,7 +50,8 @@ export const useTopicActions = () => {
       const res = await fetch(`${API_BASE}/topics/${name}/pause`, {
         method: "POST",
       });
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["topics"] });
@@ -60,7 +64,8 @@ export const useTopicActions = () => {
       const res = await fetch(`${API_BASE}/topics/${name}/resume`, {
         method: "POST",
       });
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["topics"] });
@@ -73,7 +78,8 @@ export const useTopicActions = () => {
       const res = await fetch(`${API_BASE}/topics/${name}/purge`, {
         method: "POST",
       });
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["topics"] });
@@ -92,7 +98,8 @@ export const useTopicActions = () => {
         const errorText = await res.text();
         throw new Error(errorText || "Failed to publish message");
       }
-      return res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["topics", variables.name] });

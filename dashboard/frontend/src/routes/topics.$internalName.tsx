@@ -506,9 +506,18 @@ function TopicDetail() {
                     <div className="flex-1 p-6 overflow-hidden bg-kb-bg/40 relative">
                       <div className="absolute inset-6 overflow-y-auto custom-scrollbar">
                         <pre className="text-[11px] font-mono text-kb-text leading-relaxed">
-                          {topic.schema
-                            ? JSON.stringify(JSON.parse(topic.schema), null, 2)
-                            : "NO_SCHEMA_DEFINED"}
+                          {(() => {
+                            if (!topic.schema) return "No schema defined";
+                            try {
+                              return JSON.stringify(
+                                JSON.parse(topic.schema),
+                                null,
+                                2,
+                              );
+                            } catch {
+                              return "Invalid schema format";
+                            }
+                          })()}
                         </pre>
                       </div>
                     </div>

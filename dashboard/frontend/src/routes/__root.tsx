@@ -63,7 +63,7 @@ function RootLayout() {
           unstyled: true,
           classNames: {
             toast:
-              "group w-[350px] flex flex-col justify-center bg-kb-card border border-kb-border p-4 shadow-2xl transition-all duration-300 pointer-events-auto select-none",
+              "group w-[350px] flex flex-col justify-center bg-kb-card border border-kb-border p-4 shadow-2xl transition-all duration-300 pointer-events-auto",
             title:
               "text-[11px] font-black uppercase tracking-[0.2em] font-mono leading-tight",
             description:
