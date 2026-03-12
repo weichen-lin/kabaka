@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import JsonView from "@uiw/react-json-view";
+import { lightTheme } from "@uiw/react-json-view/light";
 import { vscodeTheme } from "@uiw/react-json-view/vscode";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -30,7 +31,7 @@ export const Route = createFileRoute("/topics/$internalName")({
 
 function TopicDetail() {
   const { internalName } = Route.useParams();
-  const { openConfirm } = useStore();
+  const { openConfirm, theme } = useStore();
   const [activeTab, setActiveTab] = useState<"schema" | "publish">("publish");
   const [currentPayload, setCurrentPayload] = useState<unknown>(null);
 
@@ -485,7 +486,10 @@ function TopicDetail() {
                         <div className="absolute inset-4 overflow-y-auto custom-scrollbar">
                           <JsonView
                             value={currentPayload || {}}
-                            style={vscodeTheme}
+                            style={{
+                              ...(theme === "dark" ? vscodeTheme : lightTheme),
+                              backgroundColor: "transparent",
+                            }}
                             displayDataTypes={false}
                             displayObjectSize={true}
                             enableClipboard={false}
