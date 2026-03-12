@@ -1,6 +1,15 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, Pause, Play, Settings, Trash2, X } from "lucide-react";
+import {
+  Activity,
+  Loader2,
+  Pause,
+  Play,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { useTopicActions } from "../api/queries";
 import { useStore } from "../store/useStore";
 import type { Topic } from "../types";
@@ -20,18 +29,26 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
 
   const handlePauseToggle = () => {
     if (!topic) return;
+    const topicName = topic.name;
     if (topic.paused) {
-      resume(topic.name);
+      resume(topicName, {
+        onSuccess: () => toast.success(`Topic "${topicName}" resumed`),
+        onError: (err) => toast.error(`Resume failed: ${err.message}`),
+      });
     } else {
-      pause(topic.name);
+      pause(topicName, {
+        onSuccess: () => toast.success(`Topic "${topicName}" paused`),
+        onError: (err) => toast.error(`Pause failed: ${err.message}`),
+      });
     }
   };
 
   const handlePurge = () => {
     if (!topic) return;
+    const topicName = topic.name;
     openConfirm({
       title: "Purge_Topic_Queue",
-      description: `Target Topic: ${topic.name}`,
+      description: `Target Topic: ${topicName}`,
       message: (
         <div className="space-y-2">
           <p>
@@ -46,7 +63,11 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
         </div>
       ),
       variant: "danger",
-      onConfirm: () => purge(topic.name),
+      onConfirm: () =>
+        purge(topicName, {
+          onSuccess: () => toast.success(`Queue for "${topicName}" purged`),
+          onError: (err) => toast.error(`Purge failed: ${err.message}`),
+        }),
     });
   };
 
@@ -153,20 +174,23 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
                     topic.paused
                       ? "bg-kb-text text-black"
                       : "bg-kb-neon text-black shadow-[0_0_20px_rgba(0,255,159,0.2)]"
-                  } disabled:opacity-50`}
+                  } disabled:opacity-50 min-h-[52px]`}
                 >
                   <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500 skew-x-12" />
-                  {topic.paused ? (
-                    <>
-                      <Play size={16} fill="currentColor" />
-                      Resume_Service
-                    </>
+                  {isPausing || isResuming ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : topic.paused ? (
+                    <Play size={16} fill="currentColor" />
                   ) : (
-                    <>
-                      <Pause size={16} fill="currentColor" />
-                      Pause_Service
-                    </>
+                    <Pause size={16} fill="currentColor" />
                   )}
+                  {isPausing
+                    ? "Pausing..."
+                    : isResuming
+                      ? "Resuming..."
+                      : topic.paused
+                        ? "Resume_Service"
+                        : "Pause_Service"}
                 </motion.button>
                 <motion.button
                   whileHover={{
@@ -177,10 +201,14 @@ export const TopicDrawer = ({ topic, onClose }: TopicDrawerProps) => {
                   type="button"
                   disabled={isPurging}
                   onClick={handlePurge}
-                  className="flex items-center justify-center gap-3 py-4 border border-red-500/30 text-red-500 font-black text-[11px] uppercase hover:border-red-500 transition-colors disabled:opacity-50"
+                  className="flex items-center justify-center gap-3 py-4 border border-red-500/30 text-red-500 font-black text-[11px] uppercase hover:border-red-500 transition-colors disabled:opacity-50 min-h-[52px]"
                 >
-                  <Trash2 size={16} />
-                  Purge_Queue
+                  {isPurging ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  {isPurging ? "Purging..." : "Purge_Queue"}
                 </motion.button>
               </div>
             </footer>

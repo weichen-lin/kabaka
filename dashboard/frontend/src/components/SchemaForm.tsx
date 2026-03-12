@@ -11,12 +11,14 @@ const ThemedForm = withTheme(muiTheme);
 interface SchemaFormProps {
   schema: string;
   onSubmit: (data: unknown) => Promise<void>;
+  onChange?: (data: unknown) => void;
   isLoading?: boolean;
 }
 
 export const SchemaForm = ({
   schema,
   onSubmit,
+  onChange,
   isLoading,
 }: SchemaFormProps) => {
   const formRef = useRef<Form>(null);
@@ -61,6 +63,7 @@ export const SchemaForm = ({
           validator={validator}
           uiSchema={uiSchema}
           onSubmit={({ formData }) => onSubmit(formData)}
+          onChange={({ formData }) => onChange?.(formData)}
           autoComplete="off"
           disabled={isLoading}
         />

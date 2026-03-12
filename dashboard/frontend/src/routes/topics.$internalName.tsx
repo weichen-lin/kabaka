@@ -1,8 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import JsonView from "@uiw/react-json-view";
+import { vscodeTheme } from "@uiw/react-json-view/vscode";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   ArrowLeft,
   Clock,
+  Code,
+  FileJson,
+  Loader2,
   Pause,
   Play,
   RotateCcw,
@@ -11,6 +17,8 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { useTopicActions, useTopicDetail, useTopics } from "../api/queries";
 import { SchemaForm } from "../components/SchemaForm";
 import { StatusTag } from "../components/StatusTag";
@@ -23,6 +31,8 @@ export const Route = createFileRoute("/topics/$internalName")({
 function TopicDetail() {
   const { internalName } = Route.useParams();
   const { openConfirm } = useStore();
+  const [activeTab, setActiveTab] = useState<"schema" | "publish">("publish");
+  const [currentPayload, setCurrentPayload] = useState<unknown>(null);
 
   // 1. 先拿所有 Topics 列表來做「反向查找」
   const { data: topicsData, isLoading: isLoadingList } = useTopics();
@@ -40,7 +50,16 @@ function TopicDetail() {
     error,
   } = useTopicDetail(topicName);
 
-  const { pause, resume, purge, publish, isPublishing } = useTopicActions();
+  const {
+    pause,
+    resume,
+    purge,
+    publish,
+    isPausing,
+    isResuming,
+    isPurging,
+    isPublishing,
+  } = useTopicActions();
 
   const isLoading = isLoadingList || (topicName && isLoadingDetail);
 
@@ -90,8 +109,19 @@ function TopicDetail() {
 
   const handlePauseToggle = () => {
     if (!topicName) return;
-    if (topic.paused) resume(topicName);
-    else pause(topicName);
+    const isPaused = topic.paused;
+
+    if (isPaused) {
+      resume(topicName, {
+        onSuccess: () => toast.success(`Topic "${topicName}" resumed`),
+        onError: (err) => toast.error(`Resume failed: ${err.message}`),
+      });
+    } else {
+      pause(topicName, {
+        onSuccess: () => toast.success(`Topic "${topicName}" paused`),
+        onError: (err) => toast.error(`Pause failed: ${err.message}`),
+      });
+    }
   };
 
   const handlePurge = () => {
@@ -108,18 +138,22 @@ function TopicDetail() {
         </>
       ),
       variant: "danger",
-      onConfirm: () => purge(topicName),
+      onConfirm: () =>
+        purge(topicName, {
+          onSuccess: () => toast.success(`Queue for "${topicName}" purged`),
+          onError: (err) => toast.error(`Purge failed: ${err.message}`),
+        }),
     });
   };
 
   const handlePublish = async (data: unknown) => {
     if (!topicName) return;
-    try {
-      await publish({ name: topicName, data });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      alert(`Publish failed: ${message}`);
-    }
+    const promise = publish({ name: topicName, data });
+    toast.promise(promise, {
+      loading: "Publishing message...",
+      success: "Message published successfully",
+      error: (err) => `Publish failed: ${err.message}`,
+    });
   };
 
   return (
@@ -162,25 +196,40 @@ function TopicDetail() {
           <button
             type="button"
             onClick={handlePauseToggle}
-            className={`flex items-center gap-2 px-6 py-3 font-black text-xs uppercase italic transition-all ${
+            disabled={isPausing || isResuming}
+            className={`flex items-center gap-2 px-6 py-3 font-black text-xs uppercase italic transition-all min-w-[160px] justify-center ${
               topic.paused
                 ? "bg-kb-text text-slate-300 hover:bg-kb-text/90"
                 : "bg-kb-neon text-black hover:brightness-110"
-            }`}
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {topic.paused ? (
+            {isPausing || isResuming ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : topic.paused ? (
               <Play size={16} fill="currentColor" />
             ) : (
               <Pause size={16} />
             )}
-            {topic.paused ? "Resume Topic" : "Pause Topic"}
+            {isPausing
+              ? "Pausing..."
+              : isResuming
+                ? "Resuming..."
+                : topic.paused
+                  ? "Resume Topic"
+                  : "Pause Topic"}
           </button>
           <button
             type="button"
             onClick={handlePurge}
-            className="flex items-center gap-2 px-6 py-3 border border-red-500/30 text-red-500 font-black text-xs uppercase hover:bg-red-500/10 transition-colors"
+            disabled={isPurging}
+            className="flex items-center gap-2 px-6 py-3 border border-red-500/30 text-red-500 font-black text-xs uppercase hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-w-[140px] justify-center"
           >
-            <Trash2 size={16} /> Purge Queue
+            {isPurging ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Trash2 size={16} />
+            )}
+            {isPurging ? "Purging..." : "Purge Queue"}
           </button>
         </div>
       </header>
@@ -309,65 +358,178 @@ function TopicDetail() {
 
         {/* Right Column: Schema & Publish */}
         <div className="lg:col-span-2 min-h-0">
-          <section className="bg-kb-card border border-kb-border p-8 space-y-8 h-full flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between border-b border-kb-border pb-6 shrink-0">
-              <div className="space-y-1">
-                <h3 className="text-xl font-black uppercase italic tracking-tighter flex items-center gap-3">
-                  <Send size={20} className="text-kb-neon" /> Publish Message
-                </h3>
-                <p className="text-[10px] text-kb-subtext font-black uppercase tracking-widest">
-                  Test your topic with a JSON payload
-                </p>
+          <section className="bg-kb-card border border-kb-border h-full flex flex-col overflow-hidden relative">
+            {/* Cyber Tab Header */}
+            <div className="flex items-center justify-between border-b border-kb-border shrink-0 bg-kb-bg/40">
+              <div className="flex">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("publish")}
+                  className={`group relative px-8 py-4 text-[11px] font-black uppercase italic tracking-[0.2em] transition-all flex items-center gap-3 border-r border-kb-border ${
+                    activeTab === "publish"
+                      ? "text-kb-neon"
+                      : "text-kb-subtext hover:text-kb-text"
+                  }`}
+                >
+                  <Send
+                    size={14}
+                    className={activeTab === "publish" ? "animate-pulse" : ""}
+                  />
+                  <span>Publish_Message</span>
+                  {activeTab === "publish" && (
+                    <motion.div
+                      layoutId="active_tab_glitch"
+                      className="absolute bottom-0 left-0 right-0 h-[2px] bg-kb-neon shadow-[0_0_10px_rgba(0,255,159,0.5)]"
+                    />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("schema")}
+                  className={`group relative px-8 py-4 text-[11px] font-black uppercase italic tracking-[0.2em] transition-all flex items-center gap-3 border-r border-kb-border ${
+                    activeTab === "schema"
+                      ? "text-kb-neon"
+                      : "text-kb-subtext hover:text-kb-text"
+                  }`}
+                >
+                  <Code size={14} />
+                  <span>Actual_Schema</span>
+                  {activeTab === "schema" && (
+                    <motion.div
+                      layoutId="active_tab_glitch"
+                      className="absolute bottom-0 left-0 right-0 h-[2px] bg-kb-neon shadow-[0_0_10px_rgba(0,255,159,0.5)]"
+                    />
+                  )}
+                </button>
               </div>
-              {topic.schema ? (
-                <div className="px-3 py-1 bg-kb-neon/10 border border-kb-neon/20 rounded-full text-[9px] font-black text-kb-neon uppercase tracking-widest">
-                  Schema Active
-                </div>
-              ) : (
-                <div className="px-3 py-1 bg-kb-subtext/10 border border-kb-subtext/20 rounded-full text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                  No Schema
-                </div>
-              )}
+
+              <div className="px-6 flex items-center gap-4">
+                {topic.schema ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-kb-neon rounded-full animate-pulse shadow-[0_0_5px_rgba(0,255,159,0.5)]" />
+                    <span className="text-[9px] font-black text-kb-neon uppercase tracking-widest">
+                      Schema_Valid
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-kb-subtext rounded-full" />
+                    <span className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
+                      No_Schema
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {topic.schema ? (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 flex-1 min-h-0">
-                <div className="flex flex-col gap-4 min-h-0">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-kb-subtext shrink-0">
-                    Input Form
-                  </h4>
-                  <div className="bg-kb-bg p-6 border border-kb-border flex-1 min-h-0">
-                    <SchemaForm
-                      schema={topic.schema}
-                      onSubmit={handlePublish}
-                      isLoading={isPublishing}
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-4 min-h-0">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-kb-subtext shrink-0">
-                    Raw Schema
-                  </h4>
-                  <pre className="bg-kb-bg p-6 border border-kb-border text-[10px] font-mono text-kb-text overflow-y-auto flex-1 custom-scrollbar">
-                    {JSON.stringify(JSON.parse(topic.schema), null, 2)}
-                  </pre>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-kb-bg p-12 border border-dashed border-kb-border text-center space-y-4 flex-1 flex flex-col items-center justify-center">
-                <div className="w-16 h-16 bg-kb-card border border-kb-border flex items-center justify-center mx-auto opacity-50">
-                  <Send size={24} className="text-kb-subtext" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-black uppercase italic text-kb-text">
-                    Schema-less Publish Not Supported Yet
-                  </p>
-                  <p className="text-[10px] text-kb-subtext uppercase font-bold tracking-widest">
-                    This topic was created without a schema definition.
-                  </p>
-                </div>
-              </div>
-            )}
+            <div className="flex-1 overflow-hidden relative">
+              <AnimatePresence mode="wait">
+                {activeTab === "publish" ? (
+                  <motion.div
+                    key="publish"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="h-full flex flex-col md:flex-row divide-x divide-kb-border"
+                  >
+                    {/* Input Area */}
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
+                        <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
+                          <Settings size={12} className="text-kb-neon" />{" "}
+                          Input_Designer
+                        </h4>
+                      </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-kb-bg/40">
+                        {topic.schema ? (
+                          <SchemaForm
+                            schema={topic.schema}
+                            onSubmit={handlePublish}
+                            onChange={setCurrentPayload}
+                            isLoading={isPublishing}
+                          />
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 opacity-50">
+                            <Code size={32} className="text-kb-subtext" />
+                            <p className="text-[10px] font-black uppercase tracking-widest">
+                              Schema_Less_Mode_Active
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Preview Area */}
+                    <div className="flex-1 min-h-0 flex flex-col bg-kb-bg/60">
+                      <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
+                        <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
+                          <FileJson size={12} className="text-kb-neon" />{" "}
+                          Payload_Inspector
+                        </h4>
+                        {currentPayload && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                JSON.stringify(currentPayload, null, 2),
+                              );
+                              toast.success("Payload copied to clipboard");
+                            }}
+                            className="text-[9px] font-black uppercase text-kb-neon hover:underline"
+                          >
+                            Copy_JSON
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-hidden p-4 relative">
+                        <div className="absolute inset-4 overflow-y-auto custom-scrollbar">
+                          <JsonView
+                            value={currentPayload || {}}
+                            style={vscodeTheme}
+                            displayDataTypes={false}
+                            displayObjectSize={true}
+                            enableClipboard={false}
+                            shortenTextAfterLength={100}
+                            indentWidth={24}
+                          />
+                          {!currentPayload && (
+                            <div className="h-full flex items-center justify-center opacity-20 pointer-events-none">
+                              <p className="text-[10px] font-black uppercase tracking-[0.8em] animate-pulse">
+                                Waiting_For_Data...
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="schema"
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.02 }}
+                    className="h-full flex flex-col"
+                  >
+                    <div className="p-4 border-b border-kb-border bg-kb-bg/20">
+                      <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
+                        <Code size={12} className="text-kb-neon" />{" "}
+                        JSON_Schema_Source
+                      </h4>
+                    </div>
+                    <div className="flex-1 p-6 overflow-hidden bg-kb-bg/40 relative">
+                      <div className="absolute inset-6 overflow-y-auto custom-scrollbar">
+                        <pre className="text-[11px] font-mono text-kb-text leading-relaxed">
+                          {topic.schema
+                            ? JSON.stringify(JSON.parse(topic.schema), null, 2)
+                            : "NO_SCHEMA_DEFINED"}
+                        </pre>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </section>
         </div>
       </div>

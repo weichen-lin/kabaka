@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { Database, Filter, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { type Topic, useTopics } from "../api/queries";
 import { formatDuration } from "../utils/format";
 import { StatusTag } from "./StatusTag";
@@ -9,6 +10,15 @@ import { StatusTag } from "./StatusTag";
 export const Topics = () => {
   const { data, isLoading, refetch, isRefetching } = useTopics();
   const [filter, setFilter] = useState("");
+
+  const handleRefetch = async () => {
+    try {
+      await refetch();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Registry sync failed: ${message}`);
+    }
+  };
 
   const filteredTopics = (data?.topics || [])
     .filter(
@@ -32,7 +42,7 @@ export const Topics = () => {
               whileHover={{ scale: 1.05, rotate: 180 }}
               whileTap={{ scale: 0.95 }}
               type="button"
-              onClick={() => refetch()}
+              onClick={handleRefetch}
               className="p-2.5 border border-kb-border bg-kb-card hover:border-kb-neon transition-colors group shadow-lg"
             >
               <RefreshCw

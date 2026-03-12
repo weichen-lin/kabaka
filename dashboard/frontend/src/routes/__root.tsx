@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { Toaster } from "sonner";
 import { useWebSocket } from "../api/queries";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Header } from "../components/Header";
@@ -46,6 +47,7 @@ function RootLayout() {
       </div>
 
       <ConfirmModal />
+      <Toaster position="top-right" theme={theme} richColors closeButton />
     </div>
   );
 }
