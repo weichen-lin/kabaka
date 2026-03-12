@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Clock,
   Code,
-  FileJson,
   Loader2,
   Pause,
   Play,
@@ -434,40 +433,28 @@ function TopicDetail() {
                     className="h-full flex flex-col md:flex-row divide-x divide-kb-border"
                   >
                     {/* Input Area */}
-                    <div className="flex-1 min-h-0 flex flex-col">
-                      <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
-                        <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                          <Settings size={12} className="text-kb-neon" />{" "}
-                          Message Designer
-                        </h4>
-                      </div>
-                      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-kb-bg/40">
-                        {topic.schema ? (
-                          <SchemaForm
-                            schema={topic.schema}
-                            onSubmit={handlePublish}
-                            onChange={setCurrentPayload}
-                            isLoading={isPublishing}
-                          />
-                        ) : (
-                          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 opacity-50">
-                            <Code size={32} className="text-kb-subtext" />
-                            <p className="text-[10px] font-black uppercase tracking-widest">
-                              Schemaless Publishing
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                    <div className="flex-1 min-h-0 flex flex-col p-6 bg-kb-bg/40 relative">
+                      {topic.schema ? (
+                        <SchemaForm
+                          schema={topic.schema}
+                          onSubmit={handlePublish}
+                          onChange={setCurrentPayload}
+                          isLoading={isPublishing}
+                        />
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 opacity-50">
+                          <Code size={32} className="text-kb-subtext" />
+                          <p className="text-[10px] font-black uppercase tracking-widest">
+                            Schemaless Publishing
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Preview Area */}
-                    <div className="flex-1 min-h-0 flex flex-col bg-kb-bg/60">
-                      <div className="p-4 border-b border-kb-border bg-kb-bg/20 flex items-center justify-between">
-                        <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                          <FileJson size={12} className="text-kb-neon" />{" "}
-                          Payload Inspector
-                        </h4>
-                        {currentPayload && (
+                    <div className="flex-1 min-h-0 flex flex-col bg-kb-bg/60 relative group/preview">
+                      {!!currentPayload && (
+                        <div className="absolute top-4 right-6 z-20 opacity-0 group-hover/preview:opacity-100 transition-opacity">
                           <button
                             type="button"
                             onClick={() => {
@@ -476,14 +463,15 @@ function TopicDetail() {
                               );
                               toast.success("Payload copied to clipboard");
                             }}
-                            className="text-[9px] font-black uppercase text-kb-neon hover:underline"
+                            className="px-3 py-1.5 bg-kb-bg border border-kb-border text-[9px] font-black uppercase text-kb-neon hover:border-kb-neon transition-colors shadow-xl"
                           >
                             Copy JSON
                           </button>
-                        )}
-                      </div>
-                      <div className="flex-1 overflow-hidden p-4 relative">
-                        <div className="absolute inset-4 overflow-y-auto custom-scrollbar">
+                        </div>
+                      )}
+
+                      <div className="flex-1 overflow-hidden p-6 relative">
+                        <div className="absolute inset-6 overflow-y-auto custom-scrollbar">
                           <JsonView
                             value={currentPayload || {}}
                             style={{
@@ -515,12 +503,6 @@ function TopicDetail() {
                     exit={{ opacity: 0, scale: 1.02 }}
                     className="h-full flex flex-col"
                   >
-                    <div className="p-4 border-b border-kb-border bg-kb-bg/20">
-                      <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
-                        <Code size={12} className="text-kb-neon" /> Schema
-                        Source
-                      </h4>
-                    </div>
                     <div className="flex-1 p-6 overflow-hidden bg-kb-bg/40 relative">
                       <div className="absolute inset-6 overflow-y-auto custom-scrollbar">
                         <pre className="text-[11px] font-mono text-kb-text leading-relaxed">
