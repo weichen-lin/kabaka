@@ -4,7 +4,6 @@ import { Database, Filter, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { type Topic, useTopics } from "../api/queries";
-import { formatDuration } from "../utils/format";
 import { StatusTag } from "./StatusTag";
 
 export const Topics = () => {
@@ -150,7 +149,9 @@ export const Topics = () => {
                           Success Rate
                         </div>
                         <div className="text-base font-black text-kb-neon font-mono">
-                          {topic.success_rate}%
+                          {topic.success_rate !== null
+                            ? `${topic.success_rate}%`
+                            : "--"}
                         </div>
                       </div>
                       <div className="space-y-1.5 border-l border-kb-border/30 pl-4 group-hover:border-kb-neon/30 transition-colors">
@@ -158,15 +159,19 @@ export const Topics = () => {
                           Avg Duration
                         </div>
                         <div className="text-base font-black text-kb-info font-mono">
-                          {formatDuration(topic.avg_duration)}
+                          {topic.avg_duration !== null
+                            ? `${topic.avg_duration}ms`
+                            : "--"}
                         </div>
                       </div>
                       <div className="space-y-1.5 border-l border-kb-border/30 pl-4 group-hover:border-kb-neon/30 transition-colors">
                         <div className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                          Pending
+                          Avg Duration
                         </div>
-                        <div className="text-base font-black text-kb-warning font-mono">
-                          {topic.queue_pending ?? 0}
+                        <div className="text-base font-black text-kb-info font-mono">
+                          {topic.avg_duration !== null
+                            ? `${topic.avg_duration}ms`
+                            : "--"}
                         </div>
                       </div>
                     </div>

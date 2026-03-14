@@ -4,8 +4,8 @@ export interface Topic {
   processed_total: number;
   failed_total: number;
   retry_total: number;
-  avg_duration: number;
-  success_rate: string;
+  avg_duration: number | null;
+  success_rate: string | null;
   paused: boolean;
   max_retries: number;
   retry_delay: number;

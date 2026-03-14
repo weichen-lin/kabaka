@@ -22,13 +22,14 @@ export const TopicStatsGrid = ({ topic }: TopicStatsGridProps) => {
     },
     {
       label: "Avg Duration",
-      value: formatDuration(topic.avg_duration),
+      value:
+        topic.avg_duration !== null ? formatDuration(topic.avg_duration) : "--",
       color: "text-kb-info",
       sub: "Latency MS",
     },
     {
       label: "Success Rate",
-      value: `${topic.success_rate}%`,
+      value: topic.success_rate !== null ? `${topic.success_rate}%` : "--",
       color: "text-kb-neon",
       sub: "Throughput",
     },

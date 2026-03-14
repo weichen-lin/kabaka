@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useStore } from "../store/useStore";
 import type { Stats, Topic } from "../types";
+export type { Topic };
 
 const API_BASE = "/api/v1";
 

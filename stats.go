@@ -36,15 +36,15 @@ type KabakaStats struct {
 
 // TopicSnapshot is a point-in-time copy of a single topic's metrics.
 type TopicSnapshot struct {
-	ProcessedTotal  int64  `json:"processed_total"`
-	FailedTotal     int64  `json:"failed_total"`
-	RetryTotal      int64  `json:"retry_total"`
-	AvgDurationMs   int64  `json:"avg_duration"` // Milliseconds
-	SuccessRate     string `json:"success_rate"`
-	Paused          bool   `json:"paused"`
-	QueuePending    int64  `json:"queue_pending"`    // messages waiting in queue
-	QueueDelayed    int64  `json:"queue_delayed"`    // messages in delayed queue
-	QueueProcessing int64  `json:"queue_processing"` // messages currently being processed
+	ProcessedTotal  int64   `json:"processed_total"`
+	FailedTotal     int64   `json:"failed_total"`
+	RetryTotal      int64   `json:"retry_total"`
+	AvgDurationMs   *int64  `json:"avg_duration"` // Milliseconds, pointer to support nil
+	SuccessRate     *string `json:"success_rate"`
+	Paused          bool    `json:"paused"`
+	QueuePending    int64   `json:"queue_pending"`    // messages waiting in queue
+	QueueDelayed    int64   `json:"queue_delayed"`    // messages in delayed queue
+	QueueProcessing int64   `json:"queue_processing"` // messages currently being processed
 
 	// Configuration
 	MaxRetries     int    `json:"max_retries"`
@@ -88,17 +88,25 @@ func (k *Kabaka) GetStats() KabakaStats {
 		processed := topic.stats.ProcessedTotal.Load()
 		failed := topic.stats.FailedTotal.Load()
 
-		var successRate float64 = 100
+		var successRateStr *string
+		var avgDurationMs *int64
 		if processed > 0 {
-			successRate = float64(processed-failed) / float64(processed) * 100
+			// Calculate Success Rate
+			rate := float64(processed-failed) / float64(processed) * 100
+			s := fmt.Sprintf("%.2f", rate)
+			successRateStr = &s
+
+			// Get Avg Duration
+			avg := topic.stats.AvgDuration().Milliseconds()
+			avgDurationMs = &avg
 		}
 
 		snapshot := TopicSnapshot{
 			ProcessedTotal: processed,
 			FailedTotal:    failed,
 			RetryTotal:     topic.stats.RetryTotal.Load(),
-			AvgDurationMs:  topic.stats.AvgDuration().Milliseconds(),
-			SuccessRate:    fmt.Sprintf("%.2f", successRate),
+			AvgDurationMs:  avgDurationMs,
+			SuccessRate:    successRateStr,
 			Paused:         topic.Paused.Load(),
 
 			// Configuration

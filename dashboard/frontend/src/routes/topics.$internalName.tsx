@@ -257,12 +257,18 @@ function TopicDetail() {
                 },
                 {
                   label: "Avg Time",
-                  value: `${topic.avg_duration}ms`,
+                  value:
+                    topic.avg_duration !== null
+                      ? `${topic.avg_duration}ms`
+                      : "--",
                   color: "text-kb-info",
                 },
                 {
                   label: "Success",
-                  value: `${topic.success_rate}%`,
+                  value:
+                    topic.success_rate !== null
+                      ? `${topic.success_rate}%`
+                      : "--",
                   color: "text-kb-neon",
                 },
               ].map((s) => (
