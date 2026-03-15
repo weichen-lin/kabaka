@@ -51,7 +51,7 @@ func main() {
 			return fmt.Errorf("external api timeout")
 		}
 		return nil
-	}, kabaka.WithMaxRetries(0))
+	}, kabaka.WithMaxRetries(0), kabaka.WithHistoryLimit(100))
 
 	// 6. Schema Handler: Validated input example
 	userSchema := `{
@@ -73,7 +73,7 @@ func main() {
 		delay := time.Duration(200+rand.Intn(800)) * time.Millisecond
 		time.Sleep(delay)
 		return nil
-	}, kabaka.WithSchema(userSchema))
+	}, kabaka.WithSchema(userSchema), kabaka.WithHistoryLimit(50))
 
 	// 7. Complex Form Handler: Multi-type validation
 	complexSchema := `{

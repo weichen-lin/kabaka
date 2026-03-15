@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Clock,
   Code,
+  History as HistoryIcon,
   Loader2,
   Pause,
   Play,
@@ -16,10 +17,16 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useTopicActions, useTopicDetail, useTopics } from "../api/queries";
+import {
+  useTopicActions,
+  useTopicDetail,
+  useTopicHistory,
+  useTopics,
+} from "../api/queries";
 import { SchemaForm } from "../components/SchemaForm";
 import { StatusTag } from "../components/StatusTag";
 import { useStore } from "../store/useStore";
@@ -28,11 +35,28 @@ export const Route = createFileRoute("/topics/$internalName")({
   component: TopicDetail,
 });
 
+interface HistoryRecord {
+  id: string;
+  topic: string;
+  payload: string;
+  status: "success" | "dead";
+  error?: string;
+  attempts: number;
+  duration_ms: number;
+  created_at: string;
+  finished_at: string;
+}
+
 function TopicDetail() {
   const { internalName } = Route.useParams();
   const { openConfirm, theme } = useStore();
-  const [activeTab, setActiveTab] = useState<"schema" | "publish">("publish");
+  const [activeTab, setActiveTab] = useState<"schema" | "publish" | "history">(
+    "publish",
+  );
   const [currentPayload, setCurrentPayload] = useState<unknown>(null);
+  const [selectedHistory, setSelectedHistory] = useState<HistoryRecord | null>(
+    null,
+  );
 
   // 1. 先拿所有 Topics 列表來做「反向查找」
   const { data: topicsData, isLoading: isLoadingList } = useTopics();
@@ -49,6 +73,9 @@ function TopicDetail() {
     isLoading: isLoadingDetail,
     error,
   } = useTopicDetail(topicName);
+
+  const { data: historyData, isLoading: isLoadingHistory } =
+    useTopicHistory(topicName);
 
   const {
     pause,
@@ -362,7 +389,7 @@ function TopicDetail() {
           </section>
         </div>
 
-        {/* Right Column: Schema & Publish */}
+        {/* Right Column: Schema & Publish & History */}
         <div className="lg:col-span-2 min-h-0">
           <section className="bg-kb-card border border-kb-border h-full flex flex-col overflow-hidden relative">
             {/* Cyber Tab Header */}
@@ -401,6 +428,24 @@ function TopicDetail() {
                   <Code size={14} />
                   <span>Topic Schema</span>
                   {activeTab === "schema" && (
+                    <motion.div
+                      layoutId="active_tab_glitch"
+                      className="absolute bottom-0 left-0 right-0 h-[2px] bg-kb-neon shadow-[0_0_10px_rgba(0,255,159,0.5)]"
+                    />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("history")}
+                  className={`group relative px-8 py-4 text-[11px] font-black uppercase italic tracking-[0.2em] transition-all flex items-center gap-3 border-r border-kb-border ${
+                    activeTab === "history"
+                      ? "text-kb-neon"
+                      : "text-kb-subtext hover:text-kb-text"
+                  }`}
+                >
+                  <HistoryIcon size={14} />
+                  <span>Audit History</span>
+                  {activeTab === "history" && (
                     <motion.div
                       layoutId="active_tab_glitch"
                       className="absolute bottom-0 left-0 right-0 h-[2px] bg-kb-neon shadow-[0_0_10px_rgba(0,255,159,0.5)]"
@@ -501,7 +546,7 @@ function TopicDetail() {
                       </div>
                     </div>
                   </motion.div>
-                ) : (
+                ) : activeTab === "schema" ? (
                   <motion.div
                     key="schema"
                     initial={{ opacity: 0, scale: 0.98 }}
@@ -528,12 +573,276 @@ function TopicDetail() {
                       </div>
                     </div>
                   </motion.div>
+                ) : (
+                  <motion.div
+                    key="history"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="h-full overflow-y-auto custom-scrollbar p-6 space-y-1.5"
+                  >
+                    {isLoadingHistory ? (
+                      <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40">
+                        <Loader2 className="animate-spin text-kb-neon" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Syncing Audit Log...
+                        </span>
+                      </div>
+                    ) : !historyData || historyData.history.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-30 gap-4">
+                        <HistoryIcon size={48} />
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-widest mb-1">
+                            No History Records
+                          </p>
+                          <p className="text-[10px] uppercase tracking-tighter">
+                            Topics with HistoryLimit {">"} 0 will appear here
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      historyData.history.map((record) => (
+                        <HistoryItem
+                          key={record.id}
+                          record={record as HistoryRecord}
+                          onView={() =>
+                            setSelectedHistory(record as HistoryRecord)
+                          }
+                        />
+                      ))
+                    )}
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>
           </section>
         </div>
       </div>
+
+      {/* Audit Detail Popup */}
+      <AnimatePresence>
+        {selectedHistory && (
+          <HistoryDetailPopup
+            record={selectedHistory}
+            onClose={() => setSelectedHistory(null)}
+            theme={theme}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+function HistoryItem({
+  record,
+  onView,
+}: {
+  record: HistoryRecord;
+  onView: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onView}
+      className="w-full bg-kb-bg/40 border border-kb-border/50 py-2 px-4 flex items-center justify-between group transition-all hover:border-kb-neon/40 hover:bg-kb-neon/5 select-none outline-none"
+    >
+      <div className="flex items-center gap-3 text-left">
+        <div
+          className={`w-1.5 h-1.5 rounded-full ${
+            record.status === "success"
+              ? "bg-kb-neon shadow-[0_0_8px_rgba(0,255,159,0.5)]"
+              : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+          }`}
+        />
+        <div className="flex items-center gap-3">
+          <span className="text-[9px] font-mono text-kb-subtext font-bold opacity-60">
+            #{record.id.slice(0, 8)}
+          </span>
+          <span
+            className={`text-[10px] font-black uppercase italic tracking-tighter ${
+              record.status === "success" ? "text-kb-neon" : "text-red-500"
+            }`}
+          >
+            {record.status}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6">
+        <div className="hidden md:flex flex-col items-end">
+          <span className="text-[10px] font-mono font-bold text-kb-info/70">
+            {record.duration_ms}ms
+          </span>
+        </div>
+        <div className="flex flex-col items-end min-w-[100px]">
+          <span className="text-[9px] font-mono font-bold text-kb-subtext opacity-50">
+            {new Date(record.finished_at).toLocaleTimeString([], {
+              hour12: false,
+            })}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function HistoryDetailPopup({
+  record,
+  onClose,
+  theme,
+}: {
+  record: HistoryRecord;
+  onClose: () => void;
+  theme: string;
+}) {
+  const displayPayload = (() => {
+    try {
+      return JSON.parse(record.payload);
+    } catch {
+      return record.payload;
+    }
+  })();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8"
+    >
+      {/* Backdrop */}
+      <button
+        type="button"
+        className="absolute inset-0 bg-kb-bg/80 backdrop-blur-md border-none p-0 cursor-default"
+        onClick={onClose}
+        tabIndex={-1}
+        onKeyDown={(e) => e.key === "Escape" && onClose()}
+      />
+
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+        className="relative w-full max-w-2xl max-h-[80vh] bg-kb-card border border-kb-border shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-kb-border bg-kb-bg/40 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                record.status === "success" ? "bg-kb-neon" : "bg-red-500"
+              }`}
+            />
+            <div>
+              <h2 className="text-xl font-black italic tracking-tighter uppercase leading-none">
+                Audit Record Detail
+              </h2>
+              <p className="text-[10px] font-mono font-bold text-kb-subtext mt-1 opacity-60">
+                ID: {record.id}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 text-kb-subtext hover:text-kb-neon transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              {
+                label: "Status",
+                value: record.status,
+                color:
+                  record.status === "success" ? "text-kb-neon" : "text-red-500",
+              },
+              {
+                label: "Duration",
+                value: `${record.duration_ms}ms`,
+                color: "text-kb-info",
+              },
+              {
+                label: "Attempts",
+                value: `${record.attempts}x`,
+                color: "text-kb-text",
+              },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="bg-kb-bg/30 border border-kb-border/50 p-3"
+              >
+                <p className="text-[8px] font-black uppercase text-kb-subtext tracking-widest mb-1">
+                  {s.label}
+                </p>
+                <p className={`text-sm font-black italic uppercase ${s.color}`}>
+                  {s.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {record.error && (
+            <div className="p-4 bg-red-500/10 border-l-2 border-red-500 space-y-1">
+              <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">
+                Execution Error
+              </p>
+              <p className="text-xs font-mono text-red-400 leading-relaxed">
+                {record.error}
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
+                Payload Trace
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    JSON.stringify(displayPayload, null, 2),
+                  );
+                  toast.success("Payload copied");
+                }}
+                className="text-[9px] font-black text-kb-neon uppercase hover:underline"
+              >
+                Copy JSON
+              </button>
+            </div>
+            <div className="bg-black/40 p-4 border border-kb-border/50 font-mono">
+              <JsonView
+                value={displayPayload}
+                style={{
+                  ...(theme === "dark" ? vscodeTheme : lightTheme),
+                  backgroundColor: "transparent",
+                  fontSize: "12px",
+                }}
+                displayDataTypes={false}
+                displayObjectSize={true}
+                enableClipboard={false}
+                indentWidth={24}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-kb-bg/20 border-t border-kb-border flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-2 bg-kb-neon text-black font-black uppercase italic text-[10px] hover:brightness-110 transition-all"
+          >
+            Close Trace
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -50,6 +50,7 @@ type TopicSnapshot struct {
 	MaxRetries     int    `json:"max_retries"`
 	RetryDelay     int64  `json:"retry_delay"`     // Seconds
 	ProcessTimeout int64  `json:"process_timeout"` // Seconds
+	HistoryLimit   int    `json:"history_limit"`
 	InternalName   string `json:"internal_name"`
 	Schema         string `json:"schema"`
 	SchemaType     string `json:"schema_type"`
@@ -113,6 +114,7 @@ func (k *Kabaka) GetStats() KabakaStats {
 			MaxRetries:     topic.maxRetries,
 			RetryDelay:     int64(topic.retryDelay.Seconds()),
 			ProcessTimeout: int64(topic.processTimeout.Seconds()),
+			HistoryLimit:   topic.historyLimit,
 			InternalName:   topic.InternalName,
 			Schema:         topic.schema,
 			SchemaType:     topic.schemaType,

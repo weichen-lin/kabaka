@@ -22,6 +22,7 @@ type Topic struct {
 	processTimeout time.Duration
 	schema         string
 	schemaType     string
+	historyLimit   int // LRU limit for job history
 
 	// State
 	Paused atomic.Bool
@@ -41,6 +42,7 @@ func newTopic(name, internalName string, b broker.Broker, handler HandleFunc, op
 		maxRetries:     3,
 		retryDelay:     1 * time.Second,
 		processTimeout: 30 * time.Second,
+		historyLimit:   0, // Disabled by default
 		stats:          &TopicStats{},
 	}
 
@@ -66,6 +68,12 @@ func WithRetryDelay(d time.Duration) Option {
 func WithProcessTimeout(d time.Duration) Option {
 	return func(t *Topic) {
 		t.processTimeout = d
+	}
+}
+
+func WithHistoryLimit(n int) Option {
+	return func(t *Topic) {
+		t.historyLimit = n
 	}
 }
 

@@ -55,6 +55,7 @@ type MemoryBroker struct {
 	messages   *list.List                  // pending messages queue (FIFO)
 	delayed    *delayedHeap                // delayed messages (min-heap by scheduleAt)
 	processing map[string]*processingEntry // message ID -> processing info
+	history    map[string][]*JobResult     // topic name -> historical records (LRU)
 
 	watchCh        chan *Task
 	notifyCh       chan struct{} // notification channel for new messages
@@ -84,6 +85,7 @@ func NewMemoryBroker() *MemoryBroker {
 		messages:                list.New(),
 		delayed:                 h,
 		processing:              make(map[string]*processingEntry),
+		history:                 make(map[string][]*JobResult),
 		watchCh:                 make(chan *Task, 100),
 		notifyCh:                make(chan struct{}, 1),
 		ctx:                     ctx,
@@ -271,6 +273,61 @@ func (mb *MemoryBroker) Finish(ctx context.Context, msg *Message, processErr err
 
 	delete(mb.processing, msg.Id)
 	return nil
+}
+
+// StoreResult saves a job result to the history LRU.
+func (mb *MemoryBroker) StoreResult(ctx context.Context, result *JobResult, limit int) error {
+	if limit <= 0 {
+		return nil
+	}
+
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+
+	h := mb.history[result.Topic]
+	// Append new result (O(1) operation)
+	h = append(h, result)
+
+	// Trim from front if exceeds limit
+	if len(h) > limit {
+		h = h[len(h)-limit:]
+	}
+	mb.history[result.Topic] = h
+
+	return nil
+}
+
+// FetchResults retrieves the historical records for a topic.
+func (mb *MemoryBroker) FetchResults(ctx context.Context, topic string, limit int) ([]*JobResult, error) {
+	mb.mu.RLock()
+	defer mb.mu.RUnlock()
+
+	h, exists := mb.history[topic]
+	if !exists {
+		return []*JobResult{}, nil
+	}
+
+	// Apply limit if specified
+	count := len(h)
+	if limit > 0 && count > limit {
+		count = limit
+	}
+
+	// Perform Deep Copy and Reverse order (newest first)
+	res := make([]*JobResult, count)
+	for i := 0; i < count; i++ {
+		orig := h[len(h)-1-i]
+		// Deep copy the JobResult struct
+		copyResult := *orig
+		// Deep copy the Payload slice
+		if orig.Payload != nil {
+			copyResult.Payload = make([]byte, len(orig.Payload))
+			copy(copyResult.Payload, orig.Payload)
+		}
+		res[i] = &copyResult
+	}
+
+	return res, nil
 }
 
 // QueueStats returns overall queue statistics.

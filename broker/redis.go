@@ -230,6 +230,16 @@ func (b *RedisBroker) Finish(ctx context.Context, msg *Message, processErr error
 	return err
 }
 
+func (b *RedisBroker) StoreResult(ctx context.Context, result *JobResult, limit int) error {
+	// TODO: Implement Redis history using LPUSH + LTRIM
+	return nil
+}
+
+func (b *RedisBroker) FetchResults(ctx context.Context, topic string, limit int) ([]*JobResult, error) {
+	// TODO: Implement Redis history fetch
+	return []*JobResult{}, nil
+}
+
 func (b *RedisBroker) listenMover() {
 	queueKey := b.prefix + "main_queue"
 	processingKey := b.prefix + "processing_queue"

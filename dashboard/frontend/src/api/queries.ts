@@ -198,3 +198,18 @@ export const useWebSocket = () => {
     };
   }, [queryClient, setWSStatus]);
 };
+
+export const useTopicHistory = (name: string | null) => {
+  return useQuery({
+    queryKey: ["topicHistory", name],
+    queryFn: async () => {
+      if (!name) return { history: [], total: 0 };
+      const res = await fetch(`${API_BASE}/topics/${name}/history?limit=50`);
+      if (!res.ok) throw new Error("Failed to fetch history");
+      const text = await res.text();
+      return text ? JSON.parse(text) : { history: [], total: 0 };
+    },
+    enabled: !!name,
+    refetchInterval: 5000,
+  });
+};

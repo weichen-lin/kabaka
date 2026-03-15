@@ -154,6 +154,14 @@ func (k *Kabaka) PurgeTopic(name string, internalName string) error {
 	return k.broker.Purge(ctx, internalName)
 }
 
+// GetTopicHistory retrieves historical job results for a topic.
+func (k *Kabaka) GetTopicHistory(name string, limit int) ([]*broker.JobResult, error) {
+	ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
+	defer cancel()
+
+	return k.broker.FetchResults(ctx, name, limit)
+}
+
 // SetMetaCacheTTL sets the TTL for metadata cache entries at runtime.
 func (k *Kabaka) SetMetaCacheTTL(ttl time.Duration) {
 	k.mu.Lock()

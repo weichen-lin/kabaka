@@ -65,6 +65,27 @@ type QueueStats struct {
 	Processing int64 // tasks currently being processed (in-flight)
 }
 
+// JobStatus represents the final outcome of a job.
+type JobStatus string
+
+const (
+	StatusSuccess JobStatus = "success"
+	StatusDead    JobStatus = "dead" // Max retries exceeded
+)
+
+// JobResult is a historical record of a processed job for auditability.
+type JobResult struct {
+	ID         string    `json:"id"`
+	Topic      string    `json:"topic"`
+	Payload    []byte    `json:"payload"`
+	Status     JobStatus `json:"status"`
+	Error      string    `json:"error,omitempty"`
+	Attempts   int       `json:"attempts"`
+	DurationMs int64     `json:"duration_ms"`
+	CreatedAt  time.Time `json:"created_at"`
+	FinishedAt time.Time `json:"finished_at"`
+}
+
 // Task represents a task to be processed.
 type Task struct {
 	InternalName string
@@ -84,6 +105,10 @@ type Broker interface {
 	PushDelayed(ctx context.Context, msg *Message, delay time.Duration) error
 	Watch(ctx context.Context) (<-chan *Task, error)
 	Finish(ctx context.Context, msg *Message, processErr error, duration time.Duration) error
+
+	// Audit/Traceability
+	StoreResult(ctx context.Context, result *JobResult, limit int) error
+	FetchResults(ctx context.Context, topic string, limit int) ([]*JobResult, error)
 
 	// Stats and management
 	QueueStats(ctx context.Context) (QueueStats, error)

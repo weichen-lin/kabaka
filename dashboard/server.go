@@ -122,6 +122,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
 	s.mux.HandleFunc("GET /api/v1/topics", s.handleTopics)
 	s.mux.HandleFunc("GET /api/v1/topics/{name}", s.handleTopicDetail)
+	s.mux.HandleFunc("GET /api/v1/topics/{name}/history", s.handleTopicHistory)
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/pause", s.handleTopicPause)
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/resume", s.handleTopicResume)
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/purge", s.handleTopicPurge)
@@ -286,6 +287,27 @@ func (s *Server) handleTopicDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (s *Server) handleTopicHistory(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	// Get limit from query parameter
+	limit := 50 // default
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+
+	history, err := s.kabaka.GetTopicHistory(name, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"history": history,
+		"total":   len(history),
+	})
 }
 
 func (s *Server) handleTopicPublish(w http.ResponseWriter, r *http.Request) {

@@ -152,6 +152,9 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 				stats.FailedTotal.Add(1)
 				stats.ProcessedTotal.Add(1)
 
+				// Record Audit Result
+				k.finalizeAudit(topic, msg, broker.StatusDead, err, duration)
+
 				// Log failure
 				k.logger.Error(&LogMessage{
 					TopicName:     topic.Name,
@@ -166,6 +169,9 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 			}
 		} else {
 			stats.ProcessedTotal.Add(1)
+
+			// Record Audit Result
+			k.finalizeAudit(topic, msg, broker.StatusSuccess, nil, duration)
 
 			// Log success
 			k.logger.Info(&LogMessage{
@@ -196,5 +202,39 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 			})
 		}
 		finishCancel()
+	}
+}
+
+func (k *Kabaka) finalizeAudit(topic *Topic, msg *broker.Message, status broker.JobStatus, err error, duration time.Duration) {
+	if topic.historyLimit <= 0 {
+		return
+	}
+
+	result := &broker.JobResult{
+		ID:         msg.Id,
+		Topic:      topic.Name,
+		Payload:    msg.Value,
+		Status:     status,
+		Attempts:   topic.maxRetries - msg.Retry + 1, // Total attempts made
+		DurationMs: duration.Milliseconds(),
+		CreatedAt:  msg.CreatedAt,
+		FinishedAt: time.Now(),
+	}
+	if err != nil {
+		result.Error = err.Error()
+	}
+
+	ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
+	defer cancel()
+
+	if storeErr := k.broker.StoreResult(ctx, result, topic.historyLimit); storeErr != nil {
+		k.logger.Error(&LogMessage{
+			TopicName:     topic.Name,
+			Action:        Consume,
+			MessageID:     msg.Id,
+			Message:       "Failed to store audit result: " + storeErr.Error(),
+			MessageStatus: Error,
+			CreatedAt:     time.Now(),
+		})
 	}
 }
