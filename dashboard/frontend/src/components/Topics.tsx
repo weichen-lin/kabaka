@@ -166,12 +166,10 @@ export const Topics = () => {
                       </div>
                       <div className="space-y-1.5 border-l border-kb-border/30 pl-4 group-hover:border-kb-neon/30 transition-colors">
                         <div className="text-[9px] font-black text-kb-subtext uppercase tracking-widest">
-                          Avg Duration
+                          Pending
                         </div>
-                        <div className="text-base font-black text-kb-info font-mono">
-                          {topic.avg_duration !== null
-                            ? `${topic.avg_duration}ms`
-                            : "--"}
+                        <div className="text-base font-black text-kb-warning font-mono">
+                          {topic.queue_pending ?? 0}
                         </div>
                       </div>
                     </div>
