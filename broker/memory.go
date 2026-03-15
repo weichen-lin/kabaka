@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"container/list"
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -321,7 +322,7 @@ func (mb *MemoryBroker) FetchResults(ctx context.Context, topic string, limit in
 		copyResult := *orig
 		// Deep copy the Payload slice
 		if orig.Payload != nil {
-			copyResult.Payload = make([]byte, len(orig.Payload))
+			copyResult.Payload = make(json.RawMessage, len(orig.Payload))
 			copy(copyResult.Payload, orig.Payload)
 		}
 		res[i] = &copyResult

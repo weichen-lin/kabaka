@@ -2,6 +2,7 @@ package kabaka
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"time"
 
@@ -210,10 +211,16 @@ func (k *Kabaka) finalizeAudit(topic *Topic, msg *broker.Message, status broker.
 		return
 	}
 
+	payload := json.RawMessage(msg.Value)
+	if !json.Valid(msg.Value) {
+		escaped, _ := json.Marshal(string(msg.Value))
+		payload = json.RawMessage(escaped)
+	}
+
 	result := &broker.JobResult{
 		ID:         msg.Id,
 		Topic:      topic.Name,
-		Payload:    msg.Value,
+		Payload:    payload,
 		Status:     status,
 		Attempts:   topic.maxRetries - msg.Retry + 1, // Total attempts made
 		DurationMs: duration.Milliseconds(),

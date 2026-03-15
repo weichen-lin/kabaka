@@ -13,6 +13,7 @@ export interface Topic {
   queue_pending: number;
   queue_delayed: number;
   queue_processing: number;
+  history_limit: number;
   schema?: string;
   schema_type?: string;
 }

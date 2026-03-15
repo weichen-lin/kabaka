@@ -9,6 +9,7 @@ import {
   Clock,
   Code,
   History as HistoryIcon,
+  Layers,
   Loader2,
   Pause,
   Play,
@@ -19,7 +20,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   useTopicActions,
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/topics/$internalName")({
 interface HistoryRecord {
   id: string;
   topic: string;
-  payload: string;
+  payload: unknown;
   status: "success" | "dead";
   error?: string;
   attempts: number;
@@ -184,7 +185,7 @@ function TopicDetail() {
   };
 
   return (
-    <div className="h-full flex flex-col p-8 gap-8 relative z-10 overflow-hidden">
+    <div className="h-full flex flex-col p-8 gap-4 relative z-10 overflow-hidden">
       {/* Breadcrumbs & Header - Shrink-0 to keep fixed height */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 shrink-0">
         <div className="space-y-4">
@@ -262,11 +263,11 @@ function TopicDetail() {
       </header>
 
       {/* Main Grid - flex-1 and min-h-0 to allow scrolling inside children */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch flex-1 min-h-0">
         {/* Left Column: Stats & Config */}
-        <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
+        <div className="lg:col-span-1 flex flex-col gap-4">
           {/* Quick Stats */}
-          <section className="bg-kb-card border border-kb-border p-6 space-y-6 shrink-0">
+          <section className="bg-kb-card border border-kb-border p-6 space-y-6">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
               <Activity size={12} /> Performance
             </h3>
@@ -312,7 +313,7 @@ function TopicDetail() {
           </section>
 
           {/* Configuration */}
-          <section className="bg-kb-card border border-kb-border p-6 space-y-6 shrink-0">
+          <section className="bg-kb-card border border-kb-border p-6 space-y-6">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
               <Settings size={12} /> Config
             </h3>
@@ -333,6 +334,12 @@ function TopicDetail() {
                   value: `${topic.process_timeout}s`,
                   icon: <ShieldCheck size={14} />,
                 },
+                {
+                  label: "History",
+                  value:
+                    topic.history_limit > 0 ? `${topic.history_limit}` : "Off",
+                  icon: <HistoryIcon size={14} />,
+                },
               ].map((i) => (
                 <div
                   key={i.label}
@@ -348,9 +355,9 @@ function TopicDetail() {
           </section>
 
           {/* Queue Status */}
-          <section className="bg-kb-card border border-kb-border p-6 space-y-6 shrink-0">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext">
-              Queue Status
+          <section className="bg-kb-card border border-kb-border p-6 space-y-6 flex-1">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-kb-subtext flex items-center gap-2">
+              <Layers size={12} /> Queue Status
             </h3>
             <div className="space-y-3">
               {[
@@ -581,7 +588,31 @@ function TopicDetail() {
                     exit={{ opacity: 0, x: -20 }}
                     className="h-full overflow-y-auto custom-scrollbar p-6 space-y-1.5"
                   >
-                    {isLoadingHistory ? (
+                    {topic.history_limit === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                        <div className="relative mb-6">
+                          <div className="w-20 h-20 border border-kb-border flex items-center justify-center bg-kb-bg/40 rotate-3">
+                            <HistoryIcon
+                              size={28}
+                              className="text-kb-subtext/30"
+                            />
+                          </div>
+                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-kb-bg border border-kb-border flex items-center justify-center">
+                            <X size={10} className="text-kb-subtext/50" />
+                          </div>
+                        </div>
+                        <p className="text-xs font-black uppercase tracking-[0.3em] text-kb-subtext/60 mb-2">
+                          Audit Disabled
+                        </p>
+                        <p className="text-[10px] text-kb-subtext/40 max-w-[240px] leading-relaxed">
+                          Set{" "}
+                          <span className="font-black text-kb-subtext/60">
+                            HistoryLimit
+                          </span>{" "}
+                          to enable execution trace recording for this topic.
+                        </p>
+                      </div>
+                    ) : isLoadingHistory ? (
                       <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40">
                         <Loader2 className="animate-spin text-kb-neon" />
                         <span className="text-[10px] font-black uppercase tracking-widest">
@@ -596,18 +627,16 @@ function TopicDetail() {
                             No History Records
                           </p>
                           <p className="text-[10px] uppercase tracking-tighter">
-                            Topics with HistoryLimit {">"} 0 will appear here
+                            Waiting for the first execution trace
                           </p>
                         </div>
                       </div>
                     ) : (
-                      historyData.history.map((record) => (
+                      historyData.history.map((record: HistoryRecord) => (
                         <HistoryItem
                           key={record.id}
-                          record={record as HistoryRecord}
-                          onView={() =>
-                            setSelectedHistory(record as HistoryRecord)
-                          }
+                          record={record}
+                          onView={() => setSelectedHistory(record)}
                         />
                       ))
                     )}
@@ -695,13 +724,15 @@ function HistoryDetailPopup({
   onClose: () => void;
   theme: string;
 }) {
-  const displayPayload = (() => {
-    try {
-      return JSON.parse(record.payload);
-    } catch {
-      return record.payload;
-    }
-  })();
+  const displayPayload = record.payload ?? {};
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   return (
     <motion.div
@@ -815,7 +846,7 @@ function HistoryDetailPopup({
                 Copy JSON
               </button>
             </div>
-            <div className="bg-black/40 p-4 border border-kb-border/50 font-mono">
+            <div className="bg-kb-bg/60 p-4 border border-kb-border/50 font-mono">
               <JsonView
                 value={displayPayload}
                 style={{
@@ -830,17 +861,6 @@ function HistoryDetailPopup({
               />
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 bg-kb-bg/20 border-t border-kb-border flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2 bg-kb-neon text-black font-black uppercase italic text-[10px] hover:brightness-110 transition-all"
-          >
-            Close Trace
-          </button>
         </div>
       </motion.div>
     </motion.div>

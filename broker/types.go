@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -77,7 +78,7 @@ const (
 type JobResult struct {
 	ID         string    `json:"id"`
 	Topic      string    `json:"topic"`
-	Payload    []byte    `json:"payload"`
+	Payload    json.RawMessage `json:"payload"`
 	Status     JobStatus `json:"status"`
 	Error      string    `json:"error,omitempty"`
 	Attempts   int       `json:"attempts"`
