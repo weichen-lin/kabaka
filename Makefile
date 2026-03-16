@@ -1,0 +1,62 @@
+# Valkey settings
+VALKEY_IMAGE = valkey/valkey:latest
+VALKEY_CONTAINER = kabaka-valkey
+VALKEY_PORT = 6379
+
+.PHONY: help up down restart test test-verbose dash dash-build release clean
+
+help:
+	@echo "Usage:"
+	@echo "  make up      - Start Valkey container"
+	@echo "  make down    - Stop and remove Valkey container"
+	@echo "  make restart - Restart Valkey container"
+	@echo "  make test    - Run all tests"
+	@echo "  make dash    - Build frontend and run dashboard example"
+	@echo "  make release - Prepare assets for Go package release"
+
+up:
+	@if [ ! "$$(docker ps -q -f name=$(VALKEY_CONTAINER))" ]; then \
+		if [ "$$(docker ps -aq -f status=exited -f name=$(VALKEY_CONTAINER))" ]; then \
+			docker start $(VALKEY_CONTAINER); \
+		else \
+			docker run -d --name $(VALKEY_CONTAINER) -p $(VALKEY_PORT):6379 $(VALKEY_IMAGE); \
+		fi; \
+	fi
+	@echo "Valkey is up and running on port $(VALKEY_PORT)"
+
+down:
+	@docker stop $(VALKEY_CONTAINER) || true
+	@docker rm $(VALKEY_CONTAINER) || true
+	@echo "Valkey container stopped and removed"
+
+restart: down up
+
+test: up
+	go test ./...
+
+test-verbose: up
+	go test -v ./...
+
+dash-build:
+	@echo "🏗️  Building Frontend with Bun..."
+	@cd dashboard/frontend && bun run build
+	@echo "📦 Syncing static assets to Go embed directory..."
+	@rm -rf dashboard/dist && mkdir -p dashboard/dist
+	@cp -r dashboard/frontend/dist/* dashboard/dist/
+	@echo "✅ Dashboard assets are ready for embedding."
+
+release: dash-build
+	@echo "🚀 Kabaka Dashboard Release preparation complete!"
+	@echo "👉 Next steps:"
+	@echo "   1. git add dashboard/dist"
+	@echo "   2. git commit -m 'Release: Update dashboard assets'"
+	@echo "   3. git tag v1.2.0 && git push --tags"
+
+dash: dash-build
+	@echo "🚀 Starting Kabaka Dashboard..."
+	@go run examples/test_app.go
+
+clean:
+	@rm -f kabaka-test
+	@rm -rf dashboard/dist
+	@echo "🧹 Cleaned up temporary binaries and assets"
