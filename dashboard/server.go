@@ -103,10 +103,11 @@ func (s *Server) broadcastStats() {
 				Data: map[string]interface{}{
 					"stats": stats,
 					"system": map[string]interface{}{
-						"goroutines": runtime.NumGoroutine(),
-						"memory":     fmt.Sprintf("%.2f MB", float64(m.Alloc)/1024/1024),
-						"go_version": runtime.Version(),
-						"num_cpu":    runtime.NumCPU(),
+						"goroutines":  runtime.NumGoroutine(),
+						"memory":      fmt.Sprintf("%.2f MB", float64(m.Alloc)/1024/1024),
+						"go_version":  runtime.Version(),
+						"num_cpu":     runtime.NumCPU(),
+						"broker_type": s.kabaka.BrokerType(),
 					},
 					"uptime": int64(time.Since(s.startTime).Seconds()),
 				},
@@ -253,10 +254,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"stats": stats,
 		"system": map[string]interface{}{
-			"goroutines": runtime.NumGoroutine(),
-			"memory":     fmt.Sprintf("%.2f MB", float64(m.Alloc)/1024/1024),
-			"go_version": runtime.Version(),
-			"num_cpu":    runtime.NumCPU(),
+			"goroutines":  runtime.NumGoroutine(),
+			"memory":      fmt.Sprintf("%.2f MB", float64(m.Alloc)/1024/1024),
+			"go_version":  runtime.Version(),
+			"num_cpu":     runtime.NumCPU(),
+			"broker_type": s.kabaka.BrokerType(),
 		},
 		"timestamp": time.Now().Unix(),
 		"uptime":    int64(time.Since(s.startTime).Seconds()),

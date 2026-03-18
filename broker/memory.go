@@ -75,6 +75,9 @@ type MemoryBroker struct {
 	maxRetries int
 }
 
+// Type returns the broker type identifier.
+func (b *MemoryBroker) Type() string { return "memory" }
+
 // NewMemoryBroker creates a new in-memory broker.
 func NewMemoryBroker() *MemoryBroker {
 	ctx, cancel := context.WithCancel(context.Background())

@@ -34,6 +34,7 @@ export interface Stats {
     memory: string;
     go_version: string;
     num_cpu: number;
+    broker_type: string;
   };
   timestamp: number;
   uptime: number;

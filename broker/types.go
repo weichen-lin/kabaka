@@ -112,6 +112,9 @@ type InstanceRegistry interface {
 
 // Broker defines the interface for message queue brokers.
 type Broker interface {
+	// Type returns the broker implementation name (e.g. "memory", "redis").
+	Type() string
+
 	// Topic/Metadata management
 	Register(ctx context.Context, meta *TopicMetadata) error
 	Unregister(ctx context.Context, topic string) error

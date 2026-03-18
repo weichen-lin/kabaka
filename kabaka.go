@@ -96,6 +96,11 @@ func (k *Kabaka) Close() error {
 	return nil
 }
 
+// BrokerType returns the name of the active broker implementation.
+func (k *Kabaka) BrokerType() string {
+	return k.broker.Type()
+}
+
 // GetInstances returns all alive instances if the broker supports instance registry.
 // Returns nil if the broker does not implement InstanceRegistry.
 func (k *Kabaka) GetInstances() []*broker.InstanceInfo {

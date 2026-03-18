@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import {
   Activity,
   Cpu,
+  Database,
   Globe,
   HardDrive,
   Server,
@@ -187,7 +188,16 @@ export const Dashboard = () => {
               </h3>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 relative z-10">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-8 relative z-10">
+              <div className="space-y-2 border-l-2 border-kb-border/50 pl-6 group hover:border-kb-neon/50 transition-colors">
+                <div className="text-[9px] font-black text-kb-subtext uppercase tracking-[0.3em] group-hover:text-kb-text transition-colors">
+                  Broker
+                </div>
+                <div className="flex items-center gap-2 text-xl font-black text-kb-text italic tracking-tighter bg-kb-bg/40 px-2 py-0.5 border border-kb-border/30">
+                  <Database size={14} className="text-kb-subtext shrink-0" />
+                  {system?.broker_type?.toUpperCase() || "N/A"}
+                </div>
+              </div>
               <div className="space-y-2 border-l-2 border-kb-border/50 pl-6 group hover:border-kb-neon/50 transition-colors">
                 <div className="text-[9px] font-black text-kb-subtext uppercase tracking-[0.3em] group-hover:text-kb-text transition-colors">
                   Go Runtime

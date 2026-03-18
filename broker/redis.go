@@ -26,6 +26,9 @@ type RedisBrokerOptions struct {
 	Prefix string
 }
 
+// Type returns the broker type identifier.
+func (b *RedisBroker) Type() string { return "redis" }
+
 func NewRedisBroker(addr string, password string, db int, opts ...RedisBrokerOptions) *RedisBroker {
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
