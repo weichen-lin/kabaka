@@ -17,7 +17,7 @@ import (
 func main() {
 	// 1. Initialize Kabaka with a visible worker pool
 	k := kabaka.NewKabaka(
-		kabaka.WithBroker(broker.NewMemoryBroker()),
+		kabaka.WithBroker(broker.NewRedisBroker("localhost:6379", "", 0)),
 		kabaka.WithMaxWorkers(20),
 	)
 
@@ -160,11 +160,19 @@ func main() {
 	}, kabaka.WithSchema(OrderPayload{}))
 
 	k.Start()
-	defer k.Close()
 
-	// 7. Traffic Generator: Multi-Topic Burst Mode
+	// Traffic Generator: Multi-Topic Burst Mode
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	go func() {
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			// Heavy Burst: Send 25 messages
 			for i := 0; i < 25; i++ {
 				k.Publish("heavy.task", []byte(fmt.Sprintf(`{"id": %d, "timestamp": %d}`, i, time.Now().Unix())))
@@ -194,7 +202,7 @@ func main() {
 		}
 	}()
 
-	// 7. Start Dashboard
+	// Start Dashboard
 	dashboardAddr := "0.0.0.0:8787"
 	dashServer, err := dashboard.StartEmbeddedAsync(k, dashboardAddr)
 	if err != nil {
@@ -206,9 +214,15 @@ func main() {
 	fmt.Printf("📊 Dashboard: http://127.0.0.1:3000\n")
 	fmt.Printf("💡 Multiple topics are now processing with randomized delays and errors.\n")
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
+	// Wait for signal
+	<-ctx.Done()
+	fmt.Println("\n⏳ Shutting down gracefully...")
 
-	dashServer.Stop(context.Background())
+	// 1. Stop dashboard (stop accepting new HTTP requests)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	dashServer.Stop(shutdownCtx)
+
+	// 2. Close Kabaka (waits for in-flight workers to finish)
+	k.Close()
 }

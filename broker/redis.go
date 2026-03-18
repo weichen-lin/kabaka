@@ -16,10 +16,6 @@ type RedisBroker struct {
 	prefix      string
 	ctx         context.Context
 	cancel      context.CancelFunc
-	mu          sync.Mutex
-	pollers     map[string]chan struct{}
-	allTopics   []string
-	notifyOnce  sync.Once
 	moverOnce   sync.Once
 	anyNotifyCh chan struct{}
 	watchCh     chan *Task
@@ -47,7 +43,6 @@ func NewRedisBroker(addr string, password string, db int, opts ...RedisBrokerOpt
 		prefix:      prefix,
 		ctx:         ctx,
 		cancel:      cancel,
-		pollers:     make(map[string]chan struct{}),
 		anyNotifyCh: make(chan struct{}, 1),
 		watchCh:     make(chan *Task, 100),
 	}
@@ -65,7 +60,6 @@ func NewRedisBrokerWithClient(client *redis.Client, opts ...RedisBrokerOptions) 
 		prefix:      prefix,
 		ctx:         ctx,
 		cancel:      cancel,
-		pollers:     make(map[string]chan struct{}),
 		anyNotifyCh: make(chan struct{}, 1),
 		watchCh:     make(chan *Task, 100),
 	}
@@ -123,7 +117,6 @@ var redeliverTimeoutScript = redis.NewScript(`
 	local processingKey = KEYS[1]
 	local mainQueue = KEYS[2]
 	local msgKey = KEYS[3]
-	local timeoutKey = KEYS[4]
 	local statsPrefix = ARGV[2]
 	local now = ARGV[1]
 	
@@ -206,6 +199,7 @@ func (b *RedisBroker) Watch(ctx context.Context) (<-chan *Task, error) {
 		go b.listenMover()
 		go b.startPoller()
 		go b.startTimeoutScanner()
+		go b.startPubSubListener()
 	})
 	return b.watchCh, nil
 }
@@ -231,13 +225,46 @@ func (b *RedisBroker) Finish(ctx context.Context, msg *Message, processErr error
 }
 
 func (b *RedisBroker) StoreResult(ctx context.Context, result *JobResult, limit int) error {
-	// TODO: Implement Redis history using LPUSH + LTRIM
-	return nil
+	if limit <= 0 {
+		return nil
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshal result failed: %w", err)
+	}
+
+	key := b.prefix + "history:" + result.Topic
+	pipe := b.client.Pipeline()
+	pipe.LPush(ctx, key, data)
+	pipe.LTrim(ctx, key, 0, int64(limit-1))
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 func (b *RedisBroker) FetchResults(ctx context.Context, topic string, limit int) ([]*JobResult, error) {
-	// TODO: Implement Redis history fetch
-	return []*JobResult{}, nil
+	key := b.prefix + "history:" + topic
+
+	var vals []string
+	var err error
+	if limit > 0 {
+		vals, err = b.client.LRange(ctx, key, 0, int64(limit-1)).Result()
+	} else {
+		vals, err = b.client.LRange(ctx, key, 0, -1).Result()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]*JobResult, 0, len(vals))
+	for _, v := range vals {
+		var r JobResult
+		if err := json.Unmarshal([]byte(v), &r); err != nil {
+			continue
+		}
+		results = append(results, &r)
+	}
+	return results, nil
 }
 
 func (b *RedisBroker) listenMover() {
@@ -329,7 +356,6 @@ func (b *RedisBroker) startTimeoutScanner() {
 	processingKey := b.prefix + "processing_queue"
 	queueKey := b.prefix + "main_queue"
 	msgKey := b.prefix + "messages"
-	timeoutKey := b.prefix + "timeouts"
 	statsPrefix := b.prefix + "stats:"
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -342,7 +368,7 @@ func (b *RedisBroker) startTimeoutScanner() {
 		case <-ticker.C:
 			now := time.Now().UnixMilli()
 			// Redeliver timeout tasks (visibility timeout expired)
-			count, _ := redeliverTimeoutScript.Run(b.ctx, b.client, []string{processingKey, queueKey, msgKey, timeoutKey}, now, statsPrefix).Int()
+			count, _ := redeliverTimeoutScript.Run(b.ctx, b.client, []string{processingKey, queueKey, msgKey}, now, statsPrefix).Int()
 
 			// Notify mover if tasks were redelivered
 			if count > 0 {
@@ -352,6 +378,42 @@ func (b *RedisBroker) startTimeoutScanner() {
 				}
 			}
 		}
+	}
+}
+
+// startPubSubListener subscribes to the notify channel and wakes up listenMover on new messages.
+func (b *RedisBroker) startPubSubListener() {
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		default:
+		}
+
+		pubsub := b.client.Subscribe(b.ctx, b.prefix+"notify")
+		ch := pubsub.Channel()
+
+		for {
+			select {
+			case <-b.ctx.Done():
+				pubsub.Close()
+				return
+			case _, ok := <-ch:
+				if !ok {
+					// Channel closed, reconnect
+					goto reconnect
+				}
+				// Wake up listenMover
+				select {
+				case b.anyNotifyCh <- struct{}{}:
+				default:
+				}
+			}
+		}
+
+	reconnect:
+		pubsub.Close()
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -370,8 +432,41 @@ func (b *RedisBroker) Unregister(ctx context.Context, topic string) error {
 }
 
 func (b *RedisBroker) UnregisterAndCleanup(ctx context.Context, topic string) error {
-	// TODO: implement cleanup logic (remove messages, stats, etc.)
-	return b.Unregister(ctx, topic)
+	// Look up internalName from metadata before deleting
+	meta, err := b.GetTopicMetadata(ctx, topic)
+	if err != nil {
+		return fmt.Errorf("get metadata for cleanup: %w", err)
+	}
+
+	// Remove metadata first
+	if err := b.Unregister(ctx, topic); err != nil {
+		return err
+	}
+
+	// Purge all queued messages (main_queue + delayed_queue)
+	b.Purge(ctx, meta.InternalName)
+
+	// Also clean processing_queue
+	processingKey := b.prefix + "processing_queue"
+	msgKey := b.prefix + "messages"
+	timeoutKey := b.prefix + "timeouts"
+
+	ids, _ := b.client.ZRange(ctx, processingKey, 0, -1).Result()
+	for _, id := range ids {
+		data, _ := b.client.HGet(ctx, msgKey, id).Result()
+		if data != "" && strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", meta.InternalName)) {
+			b.client.ZRem(ctx, processingKey, id)
+			b.client.HDel(ctx, msgKey, id)
+			b.client.HDel(ctx, timeoutKey, id)
+		}
+	}
+
+	// Delete stats and history
+	statsKey := b.prefix + "stats:" + meta.InternalName
+	histoKey := b.prefix + "history:" + meta.InternalName
+	b.client.Del(ctx, statsKey, histoKey)
+
+	return nil
 }
 
 func (b *RedisBroker) GetTopicMetadata(ctx context.Context, name string) (*TopicMetadata, error) {
