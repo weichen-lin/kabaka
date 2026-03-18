@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"os"
 	"time"
 
 	"github.com/weichen-lin/kabaka/broker"
@@ -11,6 +12,21 @@ import (
 
 // Start begins the message dispatcher.
 func (k *Kabaka) Start() {
+	// Register with instance registry if broker supports it
+	if reg, ok := k.broker.(broker.InstanceRegistry); ok {
+		k.instanceID = NewUUID()
+		hostname, _ := os.Hostname()
+		ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
+		reg.Join(ctx, &broker.InstanceInfo{
+			ID:            k.instanceID,
+			Hostname:      hostname,
+			StartedAt:     time.Now(),
+			LastHeartbeat: time.Now(),
+			Workers:       k.maxWorkers,
+		})
+		cancel()
+	}
+
 	k.wg.Add(1)
 	go k.dispatch()
 }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useStore } from "../store/useStore";
-import type { Stats, Topic } from "../types";
+import type { InstancesResponse, Stats, Topic } from "../types";
 export type { Topic };
 
 const API_BASE = "/api/v1";
@@ -40,6 +40,21 @@ export const useTopicDetail = (name: string | null) => {
       return text ? JSON.parse(text) : {};
     },
     enabled: !!name,
+  });
+};
+
+export const useInstances = () => {
+  return useQuery<InstancesResponse>({
+    queryKey: ["instances"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/instances`);
+      if (!res.ok) throw new Error("Failed to fetch instances");
+      const text = await res.text();
+      return text
+        ? JSON.parse(text)
+        : { supported: false, instances: [], total: 0 };
+    },
+    refetchInterval: 10000,
   });
 };
 

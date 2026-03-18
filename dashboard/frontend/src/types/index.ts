@@ -41,6 +41,20 @@ export interface Stats {
 
 export type WSStatus = "connected" | "disconnected" | "connecting";
 
+export interface InstanceInfo {
+  id: string;
+  hostname: string;
+  started_at: string;
+  last_heartbeat: string;
+  workers: number;
+}
+
+export interface InstancesResponse {
+  supported: boolean;
+  instances: InstanceInfo[];
+  total: number;
+}
+
 export interface ConfirmModalState {
   isOpen: boolean;
   title: string;

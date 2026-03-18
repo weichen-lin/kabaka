@@ -41,6 +41,9 @@ type Kabaka struct {
 	// Timeouts
 	brokerTimeout time.Duration // timeout for broker operations (default: 2s)
 
+	// Instance identity (for distributed registry)
+	instanceID string
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -76,6 +79,13 @@ func NewKabaka(options ...KabakaOption) *Kabaka {
 
 // Close stops the Kabaka instance and waits for all workers to finish.
 func (k *Kabaka) Close() error {
+	// Deregister from instance registry
+	if reg, ok := k.broker.(broker.InstanceRegistry); ok && k.instanceID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), k.brokerTimeout)
+		reg.Leave(ctx, k.instanceID)
+		cancel()
+	}
+
 	k.cancel()
 	k.wg.Wait()
 
@@ -84,6 +94,19 @@ func (k *Kabaka) Close() error {
 	}
 
 	return nil
+}
+
+// GetInstances returns all alive instances if the broker supports instance registry.
+// Returns nil if the broker does not implement InstanceRegistry.
+func (k *Kabaka) GetInstances() []*broker.InstanceInfo {
+	reg, ok := k.broker.(broker.InstanceRegistry)
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
+	defer cancel()
+	instances, _ := reg.Instances(ctx)
+	return instances
 }
 
 // getMetadataFromCache retrieves metadata from cache if available and not expired.

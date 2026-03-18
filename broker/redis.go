@@ -19,6 +19,7 @@ type RedisBroker struct {
 	moverOnce   sync.Once
 	anyNotifyCh chan struct{}
 	watchCh     chan *Task
+	instanceID  string
 }
 
 type RedisBrokerOptions struct {
@@ -586,6 +587,124 @@ func (b *RedisBroker) Purge(ctx context.Context, internalName string) error {
 }
 
 func (b *RedisBroker) Close() error {
+	if b.instanceID != "" {
+		// Best-effort deregister on close
+		b.Leave(context.Background(), b.instanceID)
+	}
 	b.cancel()
 	return b.client.Close()
+}
+
+// --- InstanceRegistry implementation ---
+
+func (b *RedisBroker) Join(ctx context.Context, info *InstanceInfo) error {
+	b.instanceID = info.ID
+
+	// Store metadata
+	metaKey := b.prefix + "instance:" + info.ID
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("marshal instance info: %w", err)
+	}
+	if err := b.client.Set(ctx, metaKey, data, 0).Err(); err != nil {
+		return err
+	}
+
+	// Add to sorted set with heartbeat score
+	now := float64(time.Now().UnixMilli())
+	if err := b.client.ZAdd(ctx, b.prefix+"instances", redis.Z{Score: now, Member: info.ID}).Err(); err != nil {
+		return err
+	}
+
+	// Start heartbeat and cleanup goroutines
+	go b.heartbeatLoop(info.ID)
+	go b.cleanupDeadInstances()
+
+	return nil
+}
+
+func (b *RedisBroker) Leave(ctx context.Context, instanceID string) error {
+	pipe := b.client.Pipeline()
+	pipe.ZRem(ctx, b.prefix+"instances", instanceID)
+	pipe.Del(ctx, b.prefix+"instance:"+instanceID)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (b *RedisBroker) Instances(ctx context.Context) ([]*InstanceInfo, error) {
+	// Only return instances with heartbeat within last 30s
+	cutoff := float64(time.Now().Add(-30 * time.Second).UnixMilli())
+	ids, err := b.client.ZRangeByScore(ctx, b.prefix+"instances", &redis.ZRangeBy{
+		Min: fmt.Sprintf("%f", cutoff),
+		Max: "+inf",
+	}).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	instances := make([]*InstanceInfo, 0, len(ids))
+	for _, id := range ids {
+		data, err := b.client.Get(ctx, b.prefix+"instance:"+id).Result()
+		if err != nil {
+			continue
+		}
+		var info InstanceInfo
+		if err := json.Unmarshal([]byte(data), &info); err != nil {
+			continue
+		}
+		instances = append(instances, &info)
+	}
+	return instances, nil
+}
+
+func (b *RedisBroker) heartbeatLoop(instanceID string) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case <-ticker.C:
+			now := float64(time.Now().UnixMilli())
+			b.client.ZAdd(b.ctx, b.prefix+"instances", redis.Z{Score: now, Member: instanceID})
+
+			// Update last_heartbeat in metadata
+			metaKey := b.prefix + "instance:" + instanceID
+			data, err := b.client.Get(b.ctx, metaKey).Result()
+			if err == nil {
+				var info InstanceInfo
+				if json.Unmarshal([]byte(data), &info) == nil {
+					info.LastHeartbeat = time.Now()
+					if updated, err := json.Marshal(info); err == nil {
+						b.client.Set(b.ctx, metaKey, updated, 0)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (b *RedisBroker) cleanupDeadInstances() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case <-ticker.C:
+			cutoff := fmt.Sprintf("%d", time.Now().Add(-30*time.Second).UnixMilli())
+			// Find dead instances
+			ids, _ := b.client.ZRangeByScore(b.ctx, b.prefix+"instances", &redis.ZRangeBy{
+				Min: "-inf",
+				Max: cutoff,
+			}).Result()
+			for _, id := range ids {
+				b.client.Del(b.ctx, b.prefix+"instance:"+id)
+			}
+			// Remove from sorted set
+			b.client.ZRemRangeByScore(b.ctx, b.prefix+"instances", "-inf", cutoff)
+		}
+	}
 }

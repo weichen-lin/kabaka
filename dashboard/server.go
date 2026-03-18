@@ -127,6 +127,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/resume", s.handleTopicResume)
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/purge", s.handleTopicPurge)
 	s.mux.HandleFunc("POST /api/v1/topics/{name}/publish", s.handleTopicPublish)
+	s.mux.HandleFunc("GET /api/v1/instances", s.handleInstances)
 
 	// WebSocket Route
 	s.mux.HandleFunc("GET /api/v1/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +224,23 @@ func (s *Server) setupFrontendRoutes() {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleInstances(w http.ResponseWriter, r *http.Request) {
+	instances := s.kabaka.GetInstances()
+	if instances == nil {
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"supported": false,
+			"instances": []interface{}{},
+			"total":     0,
+		})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"supported": true,
+		"instances": instances,
+		"total":     len(instances),
+	})
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

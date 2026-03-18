@@ -18,6 +18,7 @@ func main() {
 	// 1. Initialize Kabaka with a visible worker pool
 	k := kabaka.NewKabaka(
 		kabaka.WithBroker(broker.NewRedisBroker("localhost:6379", "", 0)),
+		// kabaka.WithBroker(broker.NewMemoryBroker()),
 		kabaka.WithMaxWorkers(20),
 	)
 

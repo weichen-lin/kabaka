@@ -1,23 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { Database, Filter, RefreshCw, Search } from "lucide-react";
+import { Database, Filter, Search } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { type Topic, useTopics } from "../api/queries";
 import { StatusTag } from "./StatusTag";
 
 export const Topics = () => {
-  const { data, isLoading, refetch, isRefetching } = useTopics();
+  const { data, isLoading } = useTopics();
   const [filter, setFilter] = useState("");
-
-  const handleRefetch = async () => {
-    try {
-      await refetch();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Registry sync failed: ${message}`);
-    }
-  };
 
   const filteredTopics = (data?.topics || [])
     .filter(
@@ -30,25 +20,11 @@ export const Topics = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-6 relative z-10">
       <div className="flex-none space-y-6">
-        <header className="flex justify-between items-end border-b border-kb-border pb-4">
+        <header className="flex justify-between items-end border-b border-kb-border pb-4 min-h-[54px]">
           <div>
             <h2 className="text-3xl font-black italic tracking-tighter text-kb-text uppercase leading-none">
               Topic Registry
             </h2>
-          </div>
-          <div className="flex gap-2">
-            <motion.button
-              whileHover={{ scale: 1.05, rotate: 180 }}
-              whileTap={{ scale: 0.95 }}
-              type="button"
-              onClick={handleRefetch}
-              className="p-2.5 border border-kb-border bg-kb-card hover:border-kb-neon transition-colors group shadow-lg"
-            >
-              <RefreshCw
-                size={16}
-                className={`text-kb-subtext group-hover:text-kb-neon ${isRefetching ? "animate-spin" : ""}`}
-              />
-            </motion.button>
           </div>
         </header>
 

@@ -93,6 +93,23 @@ type Task struct {
 	Message      *Message
 }
 
+// InstanceInfo represents a running Kabaka instance in a distributed setup.
+type InstanceInfo struct {
+	ID            string    `json:"id"`
+	Hostname      string    `json:"hostname"`
+	StartedAt     time.Time `json:"started_at"`
+	LastHeartbeat time.Time `json:"last_heartbeat"`
+	Workers       int       `json:"workers"`
+}
+
+// InstanceRegistry is an optional interface for brokers that support
+// multi-instance discovery. Kabaka checks this at startup via type assertion.
+type InstanceRegistry interface {
+	Join(ctx context.Context, info *InstanceInfo) error
+	Leave(ctx context.Context, instanceID string) error
+	Instances(ctx context.Context) ([]*InstanceInfo, error)
+}
+
 // Broker defines the interface for message queue brokers.
 type Broker interface {
 	// Topic/Metadata management
