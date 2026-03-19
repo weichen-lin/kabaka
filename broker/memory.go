@@ -58,6 +58,11 @@ type MemoryBroker struct {
 	processing map[string]*processingEntry // message ID -> processing info
 	history    map[string][]*JobResult     // topic name -> historical records (LRU)
 
+	// Per-topic counters for O(1) queue stats
+	topicPending    map[string]int64 // internalName -> pending count
+	topicDelayed    map[string]int64 // internalName -> delayed count
+	topicProcessing map[string]int64 // internalName -> processing count
+
 	watchCh        chan *Task
 	notifyCh       chan struct{} // notification channel for new messages
 	ctx            context.Context
@@ -90,6 +95,9 @@ func NewMemoryBroker() *MemoryBroker {
 		delayed:                 h,
 		processing:              make(map[string]*processingEntry),
 		history:                 make(map[string][]*JobResult),
+		topicPending:            make(map[string]int64),
+		topicDelayed:            make(map[string]int64),
+		topicProcessing:         make(map[string]int64),
 		watchCh:                 make(chan *Task, 100),
 		notifyCh:                make(chan struct{}, 1),
 		ctx:                     ctx,
@@ -189,6 +197,11 @@ func (mb *MemoryBroker) UnregisterAndCleanup(ctx context.Context, topic string) 
 		}
 	}
 
+	// Reset counters
+	delete(mb.topicPending, internalName)
+	delete(mb.topicDelayed, internalName)
+	delete(mb.topicProcessing, internalName)
+
 	return nil
 }
 
@@ -213,6 +226,7 @@ func (mb *MemoryBroker) Push(ctx context.Context, msg *Message) error {
 		return fmt.Errorf("broker is closed")
 	}
 	mb.messages.PushBack(msg)
+	mb.topicPending[msg.InternalName]++
 	mb.mu.Unlock()
 
 	// Notify dispatcher (non-blocking)
@@ -238,6 +252,7 @@ func (mb *MemoryBroker) PushDelayed(ctx context.Context, msg *Message, delay tim
 		scheduleAt: time.Now().Add(delay),
 	}
 	heap.Push(mb.delayed, dm)
+	mb.topicDelayed[msg.InternalName]++
 
 	return nil
 }
@@ -272,10 +287,10 @@ func (mb *MemoryBroker) Finish(ctx context.Context, msg *Message, processErr err
 		return fmt.Errorf("message %s not found in processing queue", msg.Id)
 	}
 
-	// Note: processErr and duration could be used for metrics/logging
-	// Example: logger.LogProcessing(msg.Id, processErr, duration)
-
 	delete(mb.processing, msg.Id)
+	if mb.topicProcessing[msg.InternalName] > 0 {
+		mb.topicProcessing[msg.InternalName]--
+	}
 	return nil
 }
 
@@ -351,31 +366,11 @@ func (mb *MemoryBroker) TopicQueueStats(ctx context.Context, internalName string
 	mb.mu.RLock()
 	defer mb.mu.RUnlock()
 
-	stats := QueueStats{}
-
-	// Count pending messages
-	for elem := mb.messages.Front(); elem != nil; elem = elem.Next() {
-		msg := elem.Value.(*Message)
-		if msg.InternalName == internalName {
-			stats.Pending++
-		}
-	}
-
-	// Count delayed messages
-	for _, dm := range *mb.delayed {
-		if dm.message.InternalName == internalName {
-			stats.Delayed++
-		}
-	}
-
-	// Count processing messages
-	for _, entry := range mb.processing {
-		if entry.message.InternalName == internalName {
-			stats.Processing++
-		}
-	}
-
-	return stats, nil
+	return QueueStats{
+		Pending:    mb.topicPending[internalName],
+		Delayed:    mb.topicDelayed[internalName],
+		Processing: mb.topicProcessing[internalName],
+	}, nil
 }
 
 // Purge removes all pending and delayed messages for a specific topic.
@@ -406,6 +401,10 @@ func (mb *MemoryBroker) Purge(ctx context.Context, internalName string) error {
 	}
 	heap.Init(newDelayed)
 	mb.delayed = newDelayed
+
+	// Reset counters
+	mb.topicPending[internalName] = 0
+	mb.topicDelayed[internalName] = 0
 
 	return nil
 }
@@ -457,12 +456,16 @@ func (mb *MemoryBroker) dispatchNext() {
 	// Pop first message
 	elem := mb.messages.Front()
 	msg := mb.messages.Remove(elem).(*Message)
+	if mb.topicPending[msg.InternalName] > 0 {
+		mb.topicPending[msg.InternalName]--
+	}
 
 	// Mark as processing with timestamp
 	mb.processing[msg.Id] = &processingEntry{
 		message:   msg,
 		startTime: time.Now(),
 	}
+	mb.topicProcessing[msg.InternalName]++
 
 	// Create task before releasing lock
 	task := &Task{
@@ -480,7 +483,11 @@ func (mb *MemoryBroker) dispatchNext() {
 		mb.mu.Lock()
 		if !mb.isClosed() {
 			mb.messages.PushFront(msg)
+			mb.topicPending[msg.InternalName]++
 			delete(mb.processing, msg.Id)
+			if mb.topicProcessing[msg.InternalName] > 0 {
+				mb.topicProcessing[msg.InternalName]--
+			}
 		}
 		mb.mu.Unlock()
 	}
@@ -514,6 +521,10 @@ func (mb *MemoryBroker) moveDelayedMessages() {
 				// Pop and move to pending queue
 				heap.Pop(mb.delayed)
 				mb.messages.PushBack(dm.message)
+				if mb.topicDelayed[dm.message.InternalName] > 0 {
+					mb.topicDelayed[dm.message.InternalName]--
+				}
+				mb.topicPending[dm.message.InternalName]++
 				movedCount++
 			}
 
@@ -555,21 +566,26 @@ func (mb *MemoryBroker) cleanupStaleProcessing() {
 
 				if now.Sub(entry.startTime) > timeout {
 					msg := entry.message
-					msg.Retry++ // Increment retry count
+					// Don't modify msg.Retry — timeout is not a handler failure.
+					// The dispatcher will consume retries when the handler actually fails.
 
-					// Check max retries (0 = unlimited)
-					if mb.maxRetries == 0 || msg.Retry <= mb.maxRetries {
+					// Requeue if message still has retries or unlimited retries
+					if msg.Retry > 0 || mb.maxRetries == 0 {
 						staleMessages = append(staleMessages, msg)
 					}
-					// else: message exceeded max retries, drop it
+					// else: message has no retries left, drop it
 
 					delete(mb.processing, msgID)
+					if mb.topicProcessing[msg.InternalName] > 0 {
+						mb.topicProcessing[msg.InternalName]--
+					}
 				}
 			}
 
 			// Requeue stale messages that haven't exceeded max retries
 			for _, msg := range staleMessages {
 				mb.messages.PushBack(msg)
+				mb.topicPending[msg.InternalName]++
 			}
 
 			mb.mu.Unlock()

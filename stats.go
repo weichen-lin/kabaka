@@ -65,7 +65,7 @@ func (k *Kabaka) GetStats() KabakaStats {
 		Topics:     make(map[string]TopicSnapshot),
 	}
 
-	// Collect broker queue stats
+	// Collect broker queue stats (outside lock)
 	if k.broker != nil {
 		ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
 		defer cancel()
@@ -82,48 +82,80 @@ func (k *Kabaka) GetStats() KabakaStats {
 		}
 	}
 
-	k.mu.RLock()
-	defer k.mu.RUnlock()
+	// Collect topic metadata under RLock (fast, no broker calls)
+	type topicInfo struct {
+		name           string
+		internalName   string
+		processed      int64
+		failed         int64
+		retryTotal     int64
+		avgDurationMs  *int64
+		successRateStr *string
+		paused         bool
+		maxRetries     int
+		retryDelay     int64
+		processTimeout int64
+		historyLimit   int
+		schema         string
+		schemaType     string
+	}
 
+	k.mu.RLock()
+	topics := make([]topicInfo, 0, len(k.topics))
 	for _, topic := range k.topics {
 		processed := topic.stats.ProcessedTotal.Load()
 		failed := topic.stats.FailedTotal.Load()
 
-		var successRateStr *string
-		var avgDurationMs *int64
+		var successRate *string
+		var avgDuration *int64
 		if processed > 0 {
-			// Calculate Success Rate
 			rate := float64(processed-failed) / float64(processed) * 100
 			s := fmt.Sprintf("%.2f", rate)
-			successRateStr = &s
-
-			// Get Avg Duration
+			successRate = &s
 			avg := topic.stats.AvgDuration().Milliseconds()
-			avgDurationMs = &avg
+			avgDuration = &avg
 		}
 
+		topics = append(topics, topicInfo{
+			name:           topic.Name,
+			internalName:   topic.InternalName,
+			processed:      processed,
+			failed:         failed,
+			retryTotal:     topic.stats.RetryTotal.Load(),
+			avgDurationMs:  avgDuration,
+			successRateStr: successRate,
+			paused:         topic.Paused.Load(),
+			maxRetries:     topic.maxRetries,
+			retryDelay:     int64(topic.retryDelay.Seconds()),
+			processTimeout: int64(topic.processTimeout.Seconds()),
+			historyLimit:   topic.historyLimit,
+			schema:         topic.schema,
+			schemaType:     topic.schemaType,
+		})
+	}
+	k.mu.RUnlock()
+
+	// Now make broker calls for per-topic queue stats (outside lock)
+	for _, t := range topics {
 		snapshot := TopicSnapshot{
-			ProcessedTotal: processed,
-			FailedTotal:    failed,
-			RetryTotal:     topic.stats.RetryTotal.Load(),
-			AvgDurationMs:  avgDurationMs,
-			SuccessRate:    successRateStr,
-			Paused:         topic.Paused.Load(),
-
-			// Configuration
-			MaxRetries:     topic.maxRetries,
-			RetryDelay:     int64(topic.retryDelay.Seconds()),
-			ProcessTimeout: int64(topic.processTimeout.Seconds()),
-			HistoryLimit:   topic.historyLimit,
-			InternalName:   topic.InternalName,
-			Schema:         topic.schema,
-			SchemaType:     topic.schemaType,
+			ProcessedTotal: t.processed,
+			FailedTotal:    t.failed,
+			RetryTotal:     t.retryTotal,
+			AvgDurationMs:  t.avgDurationMs,
+			SuccessRate:    t.successRateStr,
+			Paused:         t.paused,
+			MaxRetries:     t.maxRetries,
+			RetryDelay:     t.retryDelay,
+			ProcessTimeout: t.processTimeout,
+			HistoryLimit:   t.historyLimit,
+			InternalName:   t.internalName,
+			Schema:         t.schema,
+			SchemaType:     t.schemaType,
 		}
 
-		// Get per-topic queue stats from broker
 		if k.broker != nil {
 			ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
-			queueStats, err := k.broker.TopicQueueStats(ctx, topic.InternalName)
+			queueStats, err := k.broker.TopicQueueStats(ctx, t.internalName)
 			cancel()
 			if err == nil {
 				snapshot.QueuePending = queueStats.Pending
@@ -131,7 +163,7 @@ func (k *Kabaka) GetStats() KabakaStats {
 				snapshot.QueueProcessing = queueStats.Processing
 			} else {
 				k.logger.Error(&LogMessage{
-					TopicName:     topic.Name,
+					TopicName:     t.name,
 					Action:        Subscribe,
 					Message:       "Failed to get queue stats: " + err.Error(),
 					MessageStatus: Error,
@@ -140,7 +172,7 @@ func (k *Kabaka) GetStats() KabakaStats {
 			}
 		}
 
-		stats.Topics[topic.Name] = snapshot
+		stats.Topics[t.name] = snapshot
 	}
 
 	return stats

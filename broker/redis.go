@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +15,9 @@ type RedisBroker struct {
 	prefix      string
 	ctx         context.Context
 	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 	moverOnce   sync.Once
+	closeOnce   sync.Once
 	anyNotifyCh chan struct{}
 	watchCh     chan *Task
 	instanceID  string
@@ -200,10 +201,11 @@ func (b *RedisBroker) PushDelayed(ctx context.Context, msg *Message, delay time.
 
 func (b *RedisBroker) Watch(ctx context.Context) (<-chan *Task, error) {
 	b.moverOnce.Do(func() {
-		go b.listenMover()
-		go b.startPoller()
-		go b.startTimeoutScanner()
-		go b.startPubSubListener()
+		b.wg.Add(4)
+		go func() { defer b.wg.Done(); b.listenMover() }()
+		go func() { defer b.wg.Done(); b.startPoller() }()
+		go func() { defer b.wg.Done(); b.startTimeoutScanner() }()
+		go func() { defer b.wg.Done(); b.startPubSubListener() }()
 	})
 	return b.watchCh, nil
 }
@@ -458,10 +460,13 @@ func (b *RedisBroker) UnregisterAndCleanup(ctx context.Context, topic string) er
 	ids, _ := b.client.ZRange(ctx, processingKey, 0, -1).Result()
 	for _, id := range ids {
 		data, _ := b.client.HGet(ctx, msgKey, id).Result()
-		if data != "" && strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", meta.InternalName)) {
-			b.client.ZRem(ctx, processingKey, id)
-			b.client.HDel(ctx, msgKey, id)
-			b.client.HDel(ctx, timeoutKey, id)
+		if data != "" {
+			var msg Message
+			if err := json.Unmarshal([]byte(data), &msg); err == nil && msg.InternalName == meta.InternalName {
+				b.client.ZRem(ctx, processingKey, id)
+				b.client.HDel(ctx, msgKey, id)
+				b.client.HDel(ctx, timeoutKey, id)
+			}
 		}
 	}
 
@@ -548,20 +553,24 @@ func (b *RedisBroker) Purge(ctx context.Context, internalName string) error {
 	timeoutKey := b.prefix + "timeouts"
 	statsKey := b.prefix + "stats:" + internalName
 
-	// 1. Get all message IDs in the queues to find which ones belong to this topic
-	// This is slightly expensive for Redis but accurate
+	// Helper: check if a message belongs to the given topic via JSON unmarshal
+	matchesTopic := func(data string) bool {
+		var msg Message
+		if err := json.Unmarshal([]byte(data), &msg); err != nil {
+			return false
+		}
+		return msg.InternalName == internalName
+	}
 
-	// Helper to find and remove IDs
+	// Helper to find and remove IDs from a List
 	purgeFromList := func(key string) {
 		ids, _ := b.client.LRange(ctx, key, 0, -1).Result()
 		for _, id := range ids {
 			data, _ := b.client.HGet(ctx, msgKey, id).Result()
-			if data != "" {
-				if strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", internalName)) {
-					b.client.LRem(ctx, key, 0, id)
-					b.client.HDel(ctx, msgKey, id)
-					b.client.HDel(ctx, timeoutKey, id)
-				}
+			if data != "" && matchesTopic(data) {
+				b.client.LRem(ctx, key, 0, id)
+				b.client.HDel(ctx, msgKey, id)
+				b.client.HDel(ctx, timeoutKey, id)
 			}
 		}
 	}
@@ -570,12 +579,10 @@ func (b *RedisBroker) Purge(ctx context.Context, internalName string) error {
 		ids, _ := b.client.ZRange(ctx, key, 0, -1).Result()
 		for _, id := range ids {
 			data, _ := b.client.HGet(ctx, msgKey, id).Result()
-			if data != "" {
-				if strings.Contains(data, fmt.Sprintf("\"InternalName\":\"%s\"", internalName)) {
-					b.client.ZRem(ctx, key, id)
-					b.client.HDel(ctx, msgKey, id)
-					b.client.HDel(ctx, timeoutKey, id)
-				}
+			if data != "" && matchesTopic(data) {
+				b.client.ZRem(ctx, key, id)
+				b.client.HDel(ctx, msgKey, id)
+				b.client.HDel(ctx, timeoutKey, id)
 			}
 		}
 	}
@@ -590,12 +597,18 @@ func (b *RedisBroker) Purge(ctx context.Context, internalName string) error {
 }
 
 func (b *RedisBroker) Close() error {
-	if b.instanceID != "" {
-		// Best-effort deregister on close
-		b.Leave(context.Background(), b.instanceID)
-	}
-	b.cancel()
-	return b.client.Close()
+	var closeErr error
+	b.closeOnce.Do(func() {
+		if b.instanceID != "" {
+			// Best-effort deregister on close
+			b.Leave(context.Background(), b.instanceID)
+		}
+		b.cancel()
+		b.wg.Wait()
+		close(b.watchCh)
+		closeErr = b.client.Close()
+	})
+	return closeErr
 }
 
 // --- InstanceRegistry implementation ---
@@ -620,8 +633,9 @@ func (b *RedisBroker) Join(ctx context.Context, info *InstanceInfo) error {
 	}
 
 	// Start heartbeat and cleanup goroutines
-	go b.heartbeatLoop(info.ID)
-	go b.cleanupDeadInstances()
+	b.wg.Add(2)
+	go func() { defer b.wg.Done(); b.heartbeatLoop(info.ID) }()
+	go func() { defer b.wg.Done(); b.cleanupDeadInstances() }()
 
 	return nil
 }
@@ -636,9 +650,9 @@ func (b *RedisBroker) Leave(ctx context.Context, instanceID string) error {
 
 func (b *RedisBroker) Instances(ctx context.Context) ([]*InstanceInfo, error) {
 	// Only return instances with heartbeat within last 30s
-	cutoff := float64(time.Now().Add(-30 * time.Second).UnixMilli())
+	cutoff := fmt.Sprintf("%d", time.Now().Add(-30*time.Second).UnixMilli())
 	ids, err := b.client.ZRangeByScore(ctx, b.prefix+"instances", &redis.ZRangeBy{
-		Min: fmt.Sprintf("%f", cutoff),
+		Min: cutoff,
 		Max: "+inf",
 	}).Result()
 	if err != nil {

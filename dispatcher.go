@@ -117,6 +117,7 @@ func (k *Kabaka) dispatch() {
 func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 	processTimeout := topic.processTimeout
 	handler := topic.handler
+	maxRetries := topic.maxRetries
 	retryDelay := topic.retryDelay
 	stats := topic.stats // capture pointer; safe, atomic ops inside
 
@@ -136,10 +137,16 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 				// Retry path
 				stats.RetryTotal.Add(1)
 				msg.Retry--
-				backoff := retryDelay * time.Duration(math.Pow(2, float64(3-msg.Retry-1)))
+				attempt := max(maxRetries-msg.Retry, 0)
+				backoff := retryDelay * time.Duration(math.Pow(2, float64(attempt)))
 
 				retryCtx, retryCancel := context.WithTimeout(context.Background(), k.brokerTimeout)
-				if pushErr := k.broker.PushDelayed(retryCtx, msg, backoff); pushErr != nil {
+				pushErr := k.broker.PushDelayed(retryCtx, msg, backoff)
+				retryCancel()
+
+				if pushErr != nil {
+					msg.Retry++ // Restore: the retry didn't actually happen
+					// PushDelayed failed — do NOT Finish so stale processing cleanup can requeue
 					k.logger.Error(&LogMessage{
 						TopicName:     topic.Name,
 						Action:        Consume,
@@ -150,8 +157,8 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 						CreatedAt:     msg.CreatedAt,
 						Headers:       msg.Headers,
 					})
+					return
 				}
-				retryCancel()
 
 				// Log retry
 				k.logger.Warn(&LogMessage{
@@ -204,14 +211,14 @@ func (k *Kabaka) buildJob(topic *Topic, msg *broker.Message) func() {
 		}
 
 		finishCtx, finishCancel := context.WithTimeout(context.Background(), k.brokerTimeout)
-		err = k.broker.Finish(finishCtx, msg, err, duration)
-		if err != nil {
+		finishErr := k.broker.Finish(finishCtx, msg, err, duration)
+		if finishErr != nil {
 			// Log finish error
 			k.logger.Error(&LogMessage{
 				TopicName:     topic.Name,
 				Action:        Consume,
 				MessageID:     msg.Id,
-				Message:       "Failed to acknowledge message: " + err.Error(),
+				Message:       "Failed to acknowledge message: " + finishErr.Error(),
 				MessageStatus: Error,
 				SpendTime:     duration.Milliseconds(),
 				CreatedAt:     msg.CreatedAt,

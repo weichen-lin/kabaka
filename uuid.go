@@ -6,12 +6,10 @@ import (
 )
 
 // NewUUID generates a new UUID version 4.
+// crypto/rand.Read never returns an error on Go 1.22+ (panics on catastrophic OS failure).
 func NewUUID() string {
 	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(err)
-	}
+	rand.Read(b)
 
 	// xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx
 

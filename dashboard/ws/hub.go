@@ -58,16 +58,27 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.Unlock()
 		case message := <-h.broadcast:
 			h.mu.RLock()
+			var slowClients []*Client
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					// If client buffer is full, drop connection
-					close(client.send)
-					delete(h.clients, client)
+					slowClients = append(slowClients, client)
 				}
 			}
 			h.mu.RUnlock()
+
+			// Clean up slow clients under write lock
+			if len(slowClients) > 0 {
+				h.mu.Lock()
+				for _, client := range slowClients {
+					if _, ok := h.clients[client]; ok {
+						close(client.send)
+						delete(h.clients, client)
+					}
+				}
+				h.mu.Unlock()
+			}
 		}
 	}
 }

@@ -89,6 +89,15 @@ func (k *Kabaka) Close() error {
 	k.cancel()
 	k.wg.Wait()
 
+	// Clear caches
+	k.schemaCache.Range(func(key, _ any) bool {
+		k.schemaCache.Delete(key)
+		return true
+	})
+	k.mu.Lock()
+	k.metaCache = make(map[string]*metaCacheEntry)
+	k.mu.Unlock()
+
 	if k.broker != nil {
 		return k.broker.Close()
 	}
@@ -127,12 +136,19 @@ func (k *Kabaka) getMetadataFromCache(topicName string) (*broker.TopicMetadata, 
 	return entry.metadata, true
 }
 
-// setMetadataCache stores metadata in cache with a TTL.
+// setMetadataCache stores metadata in cache with a TTL and cleans expired entries.
 func (k *Kabaka) setMetadataCache(topicName string, meta *broker.TopicMetadata, ttl time.Duration) {
 	k.mu.Lock()
+	now := time.Now()
+	// Lazy cleanup: remove expired entries
+	for key, entry := range k.metaCache {
+		if now.After(entry.expiresAt) {
+			delete(k.metaCache, key)
+		}
+	}
 	k.metaCache[topicName] = &metaCacheEntry{
 		metadata:  meta,
-		expiresAt: time.Now().Add(ttl),
+		expiresAt: now.Add(ttl),
 	}
 	k.mu.Unlock()
 }
@@ -175,7 +191,7 @@ func (k *Kabaka) SetTopicPaused(name string, paused bool) error {
 }
 
 // PurgeTopic removes all pending/delayed tasks for a topic from the broker.
-func (k *Kabaka) PurgeTopic(name string, internalName string) error {
+func (k *Kabaka) PurgeTopic(internalName string) error {
 	ctx, cancel := context.WithTimeout(k.ctx, k.brokerTimeout)
 	defer cancel()
 

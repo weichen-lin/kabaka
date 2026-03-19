@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -166,7 +167,7 @@ func (s *Server) handleTopicPurge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.kabaka.PurgeTopic(name, snapshot.InternalName); err != nil {
+	if err := s.kabaka.PurgeTopic(snapshot.InternalName); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -176,7 +177,11 @@ func (s *Server) handleTopicPurge(w http.ResponseWriter, r *http.Request) {
 
 // setupFrontendRoutes sets up static file serving from embedded dist folder
 func (s *Server) setupFrontendRoutes() {
-	distFS, _ := fs.Sub(frontendFS, "dist")
+	distFS, err := fs.Sub(frontendFS, "dist")
+	if err != nil {
+		fmt.Printf("Warning: failed to load embedded frontend: %v\n", err)
+		return
+	}
 	fileServer := http.FileServer(http.FS(distFS))
 
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +322,12 @@ func (s *Server) handleTopicHistory(w http.ResponseWriter, r *http.Request) {
 	if lStr := r.URL.Query().Get("limit"); lStr != "" {
 		fmt.Sscanf(lStr, "%d", &limit)
 	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
 
 	history, err := s.kabaka.GetTopicHistory(name, limit)
 	if err != nil {
@@ -332,6 +343,9 @@ func (s *Server) handleTopicHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTopicPublish(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+
+	// Limit request body size to 1MB
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	var payload interface{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -362,16 +376,47 @@ func (s *Server) writeJSON(w http.ResponseWriter, code int, data interface{}) {
 // applyMiddleware applies CORS, Auth, etc.
 func (s *Server) applyMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simple CORS for now
+		// CORS
+		allowed := false
 		if s.config.EnableCORS {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			origin := r.Header.Get("Origin")
+			for _, o := range s.config.AllowedOrigins {
+				if o == "*" || o == origin {
+					allowed = true
+					w.Header().Set("Access-Control-Allow-Origin", o)
+					break
+				}
+			}
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
 		}
 
 		if r.Method == "OPTIONS" {
+			if !s.config.EnableCORS {
+				h.ServeHTTP(w, r)
+				return
+			}
+			if !allowed {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			return
+		}
+
+		// Auth
+		if s.config.EnableAuth && s.config.AuthToken != "" {
+			// Skip auth for static files
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				token := r.Header.Get("Authorization")
+				expected := "Bearer " + s.config.AuthToken
+				if subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+			}
 		}
 
 		h.ServeHTTP(w, r)

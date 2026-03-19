@@ -87,15 +87,21 @@ func WithSchema(v interface{}) Option {
 			// Reflect the struct to JSON Schema
 			sch := jsonschema.Reflect(v)
 
-			// 將結構體轉為 map 以安全地移除 $schema 欄位
 			var m map[string]interface{}
-			schData, _ := json.Marshal(sch)
-			if err := json.Unmarshal(schData, &m); err == nil {
-				delete(m, "$schema")
-				finalData, _ := json.Marshal(m)
-				t.schema = string(finalData)
-				t.schemaType = "json"
+			schData, err := json.Marshal(sch)
+			if err != nil {
+				return // schema reflection marshal failed, topic will have no schema
 			}
+			if err := json.Unmarshal(schData, &m); err != nil {
+				return
+			}
+			delete(m, "$schema")
+			finalData, err := json.Marshal(m)
+			if err != nil {
+				return
+			}
+			t.schema = string(finalData)
+			t.schemaType = "json"
 		}
 	}
 }

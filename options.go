@@ -26,7 +26,11 @@ func WithLogger(logger Logger) KabakaOption {
 }
 
 // WithMaxWorkers sets the maximum number of concurrent workers.
+// Panics if n <= 0.
 func WithMaxWorkers(n int) KabakaOption {
+	if n <= 0 {
+		panic("kabaka: WithMaxWorkers requires n > 0")
+	}
 	return func(k *Kabaka) {
 		k.maxWorkers = n
 	}

@@ -1,13 +1,13 @@
 package kabaka
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 )
 
-// generateInternalName generates a SHA1 hash for the topic name.
+// generateInternalName generates a SHA256 hash for the topic name.
 func (k *Kabaka) generateInternalName(name string) string {
-	h := sha1.New()
+	h := sha256.New()
 	h.Write([]byte(name))
 	return hex.EncodeToString(h.Sum(nil))
 }

@@ -275,7 +275,7 @@ func TestCleanupStaleProcessing(t *testing.T) {
 		InternalName:   "test-topic",
 		Value:          []byte("test"),
 		ProcessTimeout: 100 * time.Millisecond,
-		Retry:          0,
+		Retry:          2, // has retries remaining so it will be requeued on timeout
 	}
 
 	err = broker.Push(ctx, msg)
@@ -296,8 +296,9 @@ func TestCleanupStaleProcessing(t *testing.T) {
 		if task.Message.Id != msg.Id {
 			t.Errorf("Expected requeued message ID %s, got %s", msg.Id, task.Message.Id)
 		}
-		if task.Message.Retry < 1 {
-			t.Errorf("Expected retry count >= 1, got %d", task.Message.Retry)
+		// Retry should be unchanged (timeout requeue doesn't consume retries)
+		if task.Message.Retry != 2 {
+			t.Errorf("Expected retry count 2 (unchanged), got %d", task.Message.Retry)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timeout waiting for requeued message")
