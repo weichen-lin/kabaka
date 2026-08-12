@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="t d">
+  <title id="t">What Kabaka gives you</title>
+  <desc id="d">Six cards: two brokers (memory for development, Redis for production), JSON Schema validation before enqueue, exponential backoff before a job is marked dead, an opt-in audit trail of recent runs, pause/resume/purge per topic, and instance registration with heartbeats on Redis.</desc>
+
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .eyebrow { font-size: 19px; font-weight: 700; letter-spacing: 1.8px; }
+    .head { font-size: 25px; font-weight: 700; }
+  </style>
+
+  <rect width="1200" height="720" rx="28" fill="#F7F3EC"/>
+
+  <g class="sans">
+    <text x="64" y="78" font-size="20" font-weight="700" letter-spacing="3" fill="#C96442">ONE LIBRARY · SIX JOBS</text>
+    <rect x="64" y="94" width="56" height="7" rx="3.5" fill="#C96442"/>
+    <text x="62" y="158" font-size="46" font-weight="800" fill="#15284E">Everything a queue needs, already inside</text>
+  </g>
+
+  <!-- row 1 -->
+  <g class="sans" transform="translate(64 200) rotate(-1.2 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#15284E"/>
+    <text class="eyebrow" x="26" y="48" fill="#00B5CE">BROKERS</text>
+    <text class="head" x="26" y="98" fill="#FFFFFF">Memory for dev,</text>
+    <text class="head" x="26" y="130" fill="#FFFFFF">Redis for prod.</text>
+    <rect x="26" y="152" width="118" height="42" rx="21" fill="#1E3868"/>
+    <text class="mono" x="46" y="179" font-size="19" fill="#8FE9F5">memory</text>
+    <rect x="156" y="152" width="100" height="42" rx="21" fill="#1E3868"/>
+    <text class="mono" x="176" y="179" font-size="19" fill="#8FE9F5">redis</text>
+  </g>
+
+  <g class="sans" transform="translate(428 200) rotate(1 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#E7E3FB"/>
+    <text class="eyebrow" x="26" y="48" fill="#5B45C9">SCHEMA</text>
+    <text class="head" x="26" y="98" fill="#15284E">Bad payloads never</text>
+    <text class="head" x="26" y="130" fill="#15284E">reach the queue.</text>
+    <rect x="26" y="152" width="150" height="42" rx="12" fill="#FFFFFF"/>
+    <text class="mono" x="42" y="179" font-size="19" fill="#5B45C9">{ "email" }</text>
+    <circle cx="212" cy="173" r="21" fill="#5B45C9"/>
+    <path d="M202 173 l7 8 l13 -16" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M244 173 h58" stroke="#5B45C9" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 10"/>
+  </g>
+
+  <g class="sans" transform="translate(792 200) rotate(-1.6 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#FBD08A"/>
+    <text class="eyebrow" x="26" y="48" fill="#8A5312">RETRY</text>
+    <text class="head" x="26" y="98" fill="#15284E">Backoff doubles,</text>
+    <text class="head" x="26" y="130" fill="#15284E">then marked dead.</text>
+    <path d="M30 174 h250" stroke="#C96442" stroke-width="3" stroke-linecap="round" opacity="0.45"/>
+    <circle cx="34" cy="174" r="9" fill="#15284E"/>
+    <circle cx="74" cy="174" r="9" fill="#15284E"/>
+    <circle cx="150" cy="174" r="9" fill="#15284E"/>
+    <circle cx="278" cy="174" r="13" fill="#C96442"/>
+    <path d="M272 168 l12 12 M284 168 l-12 12" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- row 2 -->
+  <g class="sans" transform="translate(64 452) rotate(1.4 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#FFFFFF"/>
+    <text class="eyebrow" x="26" y="48" fill="#0E7C86">AUDIT TRAIL</text>
+    <text class="head" x="26" y="98" fill="#15284E">Keep recent runs</text>
+    <text class="head" x="26" y="130" fill="#15284E">with payload and error.</text>
+    <rect x="26" y="152" width="288" height="14" rx="7" fill="#D6EDE3"/>
+    <rect x="26" y="152" width="96" height="14" rx="7" fill="#00B5CE"/>
+    <rect x="26" y="176" width="288" height="14" rx="7" fill="#F7E3DC"/>
+    <rect x="26" y="176" width="52" height="14" rx="7" fill="#C96442"/>
+  </g>
+
+  <g class="sans" transform="translate(428 452) rotate(-1 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#F58A6B"/>
+    <text class="eyebrow" x="26" y="48" fill="#6E2410">CONTROL</text>
+    <text class="head" x="26" y="98" fill="#FFFFFF">Pause, resume, purge</text>
+    <text class="head" x="26" y="130" fill="#FFFFFF">any topic live.</text>
+    <g fill="#FFFFFF">
+      <rect x="26" y="154" width="60" height="40" rx="12"/>
+      <rect x="98" y="154" width="60" height="40" rx="12"/>
+      <rect x="170" y="154" width="60" height="40" rx="12"/>
+    </g>
+    <g fill="#F26A47">
+      <rect x="46" y="164" width="6" height="20" rx="3"/>
+      <rect x="58" y="164" width="6" height="20" rx="3"/>
+      <path d="M120 164 l18 10 l-18 10 z"/>
+      <rect x="188" y="166" width="24" height="18" rx="4"/>
+      <rect x="192" y="160" width="16" height="5" rx="2.5"/>
+    </g>
+  </g>
+
+  <g class="sans" transform="translate(792 452) rotate(1.8 170 107)">
+    <rect x="8" y="10" width="340" height="214" rx="20" fill="#E6DED3"/>
+    <rect x="0" y="0" width="340" height="214" rx="20" fill="#D6EDE3"/>
+    <text class="eyebrow" x="26" y="48" fill="#14705C">FLEET</text>
+    <text class="head" x="26" y="98" fill="#15284E">Instances register</text>
+    <text class="head" x="26" y="130" fill="#15284E">and heartbeat.</text>
+    <path d="M52 176 h96 M172 176 h96" stroke="#14705C" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="40" cy="176" r="18" fill="#FFFFFF" stroke="#14705C" stroke-width="3"/>
+    <circle cx="160" cy="176" r="18" fill="#FFFFFF" stroke="#14705C" stroke-width="3"/>
+    <circle cx="280" cy="176" r="18" fill="#FFFFFF" stroke="#14705C" stroke-width="3"/>
+    <circle cx="40" cy="176" r="7" fill="#00B5CE"/>
+    <circle cx="160" cy="176" r="7" fill="#00B5CE"/>
+    <circle cx="280" cy="176" r="7" fill="#00B5CE"/>
+  </g>
+</svg>

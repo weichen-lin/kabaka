@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="t d">
+  <title id="t">What the built-in dashboard shows</title>
+  <desc id="d">Layout map of the embedded Kabaka dashboard: a sidebar with Dashboard, Topics and Workers, system tiles for active jobs, idle slots, pending, delayed and processing, a topic table with processed, failed, retries, success rate and average duration columns, and a topic drawer with config, queue status, audit history and a schema-generated publish form. Stats arrive over a WebSocket at /api/v1/ws.</desc>
+
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+
+  <rect width="1200" height="700" rx="28" fill="#F7F3EC"/>
+
+  <g class="sans">
+    <text x="64" y="78" font-size="20" font-weight="700" letter-spacing="3" fill="#C96442">EMBEDDED DASHBOARD</text>
+    <rect x="64" y="94" width="56" height="7" rx="3.5" fill="#C96442"/>
+    <text x="62" y="152" font-size="42" font-weight="800" fill="#15284E">Watch the queue while it runs</text>
+  </g>
+
+  <!-- window -->
+  <g class="sans" transform="translate(64 186)">
+    <rect x="8" y="10" width="1072" height="440" rx="22" fill="#E6DED3"/>
+    <rect x="0" y="0" width="1072" height="440" rx="22" fill="#FFFFFF" stroke="#E3DACE" stroke-width="2"/>
+
+    <!-- title bar -->
+    <path d="M0 22 a22 22 0 0 1 22 -22 h1028 a22 22 0 0 1 22 22 v34 H0 z" fill="#15284E"/>
+    <circle cx="28" cy="30" r="6" fill="#F58A6B"/>
+    <circle cx="48" cy="30" r="6" fill="#FBD08A"/>
+    <circle cx="68" cy="30" r="6" fill="#00B5CE"/>
+    <text class="mono" x="92" y="37" font-size="18" fill="#8FA0BE">localhost:8787 — Kabaka Dashboard</text>
+
+    <!-- sidebar -->
+    <rect x="0" y="56" width="228" height="384" fill="#F7F3EC"/>
+    <rect x="20" y="82" width="188" height="46" rx="14" fill="#15284E"/>
+    <text x="42" y="112" font-size="21" font-weight="700" fill="#FFFFFF">Dashboard</text>
+    <text x="42" y="166" font-size="21" font-weight="600" fill="#15284E">Topics</text>
+    <text x="42" y="212" font-size="21" font-weight="600" fill="#15284E">Workers</text>
+    <rect x="20" y="252" width="188" height="72" rx="14" fill="#D6EDE3"/>
+    <text x="40" y="280" font-size="18" font-weight="700" fill="#14705C">INSTANCES</text>
+    <circle cx="48" cy="304" r="9" fill="#00B5CE"/>
+    <circle cx="76" cy="304" r="9" fill="#00B5CE"/>
+    <circle cx="104" cy="304" r="9" fill="#00B5CE"/>
+    <text x="124" y="311" font-size="18" fill="#14705C">alive</text>
+
+    <!-- stat tiles -->
+    <g transform="translate(256 82)">
+      <rect x="0" y="0" width="176" height="92" rx="16" fill="#D9EDF6"/>
+      <text x="18" y="34" font-size="18" font-weight="700" fill="#146C8C">ACTIVE JOBS</text>
+      <rect x="18" y="52" width="96" height="20" rx="10" fill="#8FCFE9"/>
+
+      <rect x="196" y="0" width="176" height="92" rx="16" fill="#E7E3FB"/>
+      <text x="214" y="34" font-size="18" font-weight="700" fill="#5B45C9">IDLE SLOTS</text>
+      <rect x="214" y="52" width="72" height="20" rx="10" fill="#B7ABF0"/>
+
+      <rect x="392" y="0" width="176" height="92" rx="16" fill="#FBD08A"/>
+      <text x="410" y="34" font-size="18" font-weight="700" fill="#8A5312">PENDING</text>
+      <rect x="410" y="52" width="120" height="20" rx="10" fill="#E3A94F"/>
+
+      <rect x="588" y="0" width="176" height="92" rx="16" fill="#D6EDE3"/>
+      <text x="606" y="34" font-size="18" font-weight="700" fill="#14705C">PROCESSING</text>
+      <rect x="606" y="52" width="60" height="20" rx="10" fill="#6DC5AC"/>
+    </g>
+
+    <!-- topic table -->
+    <g transform="translate(256 202)">
+      <text x="0" y="20" font-size="20" font-weight="700" fill="#15284E">Topics</text>
+      <g font-size="18" font-weight="600" fill="#6E7A92">
+        <text x="0" y="58">topic</text>
+        <text x="248" y="58">processed</text>
+        <text x="396" y="58">failed</text>
+        <text x="498" y="58">retries</text>
+        <text x="606" y="58">success</text>
+        <text x="700" y="58">avg ms</text>
+      </g>
+      <path d="M0 72 H764" stroke="#EDE5D9" stroke-width="2"/>
+
+      <g>
+        <text class="mono" x="0" y="104" font-size="19" fill="#15284E">user.signup</text>
+        <rect x="248" y="90" width="92" height="16" rx="8" fill="#D9EDF6"/>
+        <rect x="396" y="90" width="56" height="16" rx="8" fill="#F7E3DC"/>
+        <rect x="498" y="90" width="64" height="16" rx="8" fill="#FBD08A"/>
+        <rect x="606" y="90" width="60" height="16" rx="8" fill="#D6EDE3"/>
+        <rect x="700" y="90" width="60" height="16" rx="8" fill="#EDE5D9"/>
+      </g>
+      <path d="M0 122 H764" stroke="#F2EBE0" stroke-width="2"/>
+      <g>
+        <text class="mono" x="0" y="154" font-size="19" fill="#15284E">heavy.task</text>
+        <rect x="248" y="140" width="72" height="16" rx="8" fill="#D9EDF6"/>
+        <rect x="396" y="140" width="40" height="16" rx="8" fill="#F7E3DC"/>
+        <rect x="498" y="140" width="48" height="16" rx="8" fill="#FBD08A"/>
+        <rect x="606" y="140" width="60" height="16" rx="8" fill="#D6EDE3"/>
+        <rect x="700" y="140" width="60" height="16" rx="8" fill="#EDE5D9"/>
+      </g>
+
+      <!-- action chips -->
+      <g transform="translate(0 180)">
+        <rect x="0" y="0" width="112" height="40" rx="20" fill="#F58A6B"/>
+        <text x="22" y="27" font-size="18" font-weight="700" fill="#FFFFFF">pause</text>
+        <rect x="126" y="0" width="122" height="40" rx="20" fill="#15284E"/>
+        <text x="148" y="27" font-size="18" font-weight="700" fill="#FFFFFF">resume</text>
+        <rect x="262" y="0" width="106" height="40" rx="20" fill="#E7E3FB"/>
+        <text x="284" y="27" font-size="18" font-weight="700" fill="#5B45C9">purge</text>
+        <rect x="382" y="0" width="192" height="40" rx="20" fill="#D9EDF6"/>
+        <text x="404" y="27" font-size="18" font-weight="700" fill="#146C8C">publish via schema</text>
+        <rect x="588" y="0" width="176" height="40" rx="20" fill="#D6EDE3"/>
+        <text x="610" y="27" font-size="18" font-weight="700" fill="#14705C">audit history</text>
+      </g>
+    </g>
+  </g>
+
+  <g class="sans">
+    <text x="64" y="672" font-size="19" fill="#6E7A92">Layout map, not a screenshot. Stats stream from <tspan class="mono" fill="#C96442">GET /api/v1/ws</tspan> every second — no polling.</text>
+  </g>
+</svg>

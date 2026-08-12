@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="580" viewBox="0 0 1200 580" role="img" aria-labelledby="t d">
+  <title id="t">Message lifecycle in Kabaka</title>
+  <desc id="d">A published message is validated against the topic JSON Schema, waits in the delayed queue if scheduled, moves to the pending queue, and is picked up by a worker from the semaphore-limited pool. A successful run updates stats; a failing run with retries left waits retryDelay times two to the power of the attempt and is requeued; once retries are exhausted the job is marked dead and stored in the audit trail.</desc>
+
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .box { font-size: 24px; font-weight: 700; }
+    .sub { font-size: 18px; }
+  </style>
+
+  <defs>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
+      <path d="M0 1 L8 5 L0 9 z" fill="#9AA5B8"/>
+    </marker>
+    <marker id="arwc" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
+      <path d="M0 1 L8 5 L0 9 z" fill="#C96442"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="580" rx="28" fill="#F7F3EC"/>
+
+  <g class="sans">
+    <text x="64" y="78" font-size="20" font-weight="700" letter-spacing="3" fill="#C96442">MESSAGE LIFECYCLE</text>
+    <rect x="64" y="94" width="56" height="7" rx="3.5" fill="#C96442"/>
+    <text x="62" y="152" font-size="42" font-weight="800" fill="#15284E">One lane in, one worker slot out</text>
+  </g>
+
+  <!-- stage row -->
+  <g class="sans">
+    <!-- connectors -->
+    <path d="M250 240 h32" stroke="#9AA5B8" stroke-width="3" marker-end="url(#arw)"/>
+    <path d="M472 240 h32" stroke="#9AA5B8" stroke-width="3" marker-end="url(#arw)"/>
+    <path d="M694 240 h32" stroke="#9AA5B8" stroke-width="3" marker-end="url(#arw)"/>
+    <path d="M916 240 h32" stroke="#9AA5B8" stroke-width="3" marker-end="url(#arw)"/>
+
+    <g transform="translate(64 190)">
+      <rect x="6" y="8" width="182" height="102" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="182" height="102" rx="18" fill="#FFFFFF" stroke="#E3DACE" stroke-width="2"/>
+      <text class="box" x="20" y="46" fill="#15284E">Publish</text>
+      <text class="mono sub" x="20" y="76" fill="#6E7A92">+ PublishDelayed</text>
+    </g>
+
+    <g transform="translate(286 190)">
+      <rect x="6" y="8" width="182" height="102" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="182" height="102" rx="18" fill="#E7E3FB"/>
+      <text class="box" x="20" y="46" fill="#15284E">Schema gate</text>
+      <text class="sub" x="20" y="76" fill="#5B45C9">invalid → rejected</text>
+    </g>
+
+    <g transform="translate(508 190)">
+      <rect x="6" y="8" width="182" height="102" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="182" height="102" rx="18" fill="#FBD08A"/>
+      <text class="box" x="20" y="46" fill="#15284E">Delayed</text>
+      <text class="sub" x="20" y="76" fill="#8A5312">due time reached</text>
+    </g>
+
+    <g transform="translate(730 190)">
+      <rect x="6" y="8" width="182" height="102" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="182" height="102" rx="18" fill="#D9EDF6"/>
+      <text class="box" x="20" y="46" fill="#15284E">Pending</text>
+      <text class="sub" x="20" y="76" fill="#146C8C">FIFO, shared queue</text>
+    </g>
+
+    <g transform="translate(952 190)">
+      <rect x="6" y="8" width="182" height="102" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="182" height="102" rx="18" fill="#15284E"/>
+      <text class="box" x="20" y="46" fill="#FFFFFF">Worker</text>
+      <text class="sub" x="20" y="76" fill="#8FE9F5">1 of maxWorkers</text>
+    </g>
+  </g>
+
+  <!-- worker to outcomes -->
+  <path d="M1043 292 V336 Q1043 352 1027 352 H250 Q234 352 234 368 V376" stroke="#9AA5B8" stroke-width="3" fill="none" marker-end="url(#arw)"/>
+  <path d="M598 352 V376" stroke="#9AA5B8" stroke-width="3" fill="none" marker-end="url(#arw)"/>
+  <path d="M962 352 V376" stroke="#9AA5B8" stroke-width="3" fill="none" marker-end="url(#arw)"/>
+
+  <!-- outcomes -->
+  <g class="sans">
+    <g transform="translate(64 384)">
+      <rect x="6" y="8" width="340" height="106" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="340" height="106" rx="18" fill="#D6EDE3"/>
+      <circle cx="42" cy="52" r="20" fill="#14705C"/>
+      <path d="M32 52 l7 8 l13 -16" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="box" x="76" y="46" fill="#15284E">Handler returns nil</text>
+      <text class="sub" x="76" y="76" fill="#14705C">stats + audit record</text>
+    </g>
+
+    <g transform="translate(428 384)">
+      <rect x="6" y="8" width="340" height="106" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="340" height="106" rx="18" fill="#FBD08A"/>
+      <path d="M32 60 a20 20 0 1 1 12 18" stroke="#8A5312" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M26 40 l8 20 l20 -6" stroke="#8A5312" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="box" x="76" y="46" fill="#15284E">Error, retries left</text>
+      <text class="sub" x="76" y="76" fill="#8A5312">back off, then requeue</text>
+    </g>
+
+    <g transform="translate(792 384)">
+      <rect x="6" y="8" width="340" height="106" rx="18" fill="#E6DED3"/>
+      <rect x="0" y="0" width="340" height="106" rx="18" fill="#F58A6B"/>
+      <circle cx="42" cy="52" r="20" fill="#FFFFFF"/>
+      <path d="M34 44 l16 16 M50 44 l-16 16" stroke="#D8542F" stroke-width="4.5" stroke-linecap="round"/>
+      <text class="box" x="76" y="46" fill="#FFFFFF">Retries exhausted</text>
+      <text class="sub" x="76" y="76" fill="#6E2410">marked dead + recorded</text>
+    </g>
+  </g>
+
+  <!-- retry return arc -->
+  <path d="M520 384 V300" stroke="#C96442" stroke-width="3" fill="none" stroke-dasharray="8 7" marker-end="url(#arwc)"/>
+  <text class="sans" x="536" y="334" font-size="18" font-weight="600" fill="#C96442">requeued as delayed</text>
+
+  <text class="sans" x="64" y="548" font-size="19" fill="#6E7A92">Audit records are written only when the topic sets WithHistoryLimit(n).</text>
+</svg>
